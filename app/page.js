@@ -110,7 +110,7 @@ export default function LoginPage() {
           <div className="mt-8 pt-6 border-t border-gray-200 text-center">
             <p className="text-sm text-gray-600 mb-1">Need assistance?</p>
             <p className="text-sm font-bold text-gray-900">Contact Human Resources</p>
-            <p className="text-xs text-gray-500 mt-1">hr@leacounty.gov</p>
+            <p className="text-xs text-gray-500 mt-1">hr@lunacounty.gov</p>
           </div>
         </div>
       </div>
