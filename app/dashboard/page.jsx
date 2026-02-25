@@ -2,27 +2,27 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
 import { FileText, User, Mail, LogOut, Calendar, Briefcase } from 'lucide-react';
 
+const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
+
 export default function Dashboard() {
-  const [employee, setEmployee] = useState(null);
+  const { data: session, status } = useSession();
   const [employeeDetails, setEmployeeDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    // Check if logged in
-    const stored = sessionStorage.getItem('employee');
-    if (!stored) {
+    if (status === 'loading') return; // Still loading session
+    
+    if (!session) {
       router.push('/');
       return;
     }
 
-    const emp = JSON.parse(stored);
-    setEmployee(emp);
-
     // Fetch full employee details
-    fetch(`/api/employee/${emp.id}`)
+    fetch(`/api/employee/${session.user.employeeNumber}`)
       .then(res => res.json())
       .then(data => {
         setEmployeeDetails(data);
@@ -32,14 +32,13 @@ export default function Dashboard() {
         console.error('Error fetching employee details:', err);
         setLoading(false);
       });
-  }, [router]);
+  }, [session, status, router]);
 
   const handleLogout = () => {
-    sessionStorage.removeItem('employee');
-    router.push('/');
+    signOut({ callbackUrl: '/' });
   };
 
-  if (loading) {
+  if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
         <div className="text-center">
@@ -50,20 +49,8 @@ export default function Dashboard() {
     );
   }
 
-  if (!employee || !employeeDetails) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">Error loading employee data</p>
-          <button
-            onClick={() => router.push('/')}
-            className="text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Return to Login
-          </button>
-        </div>
-      </div>
-    );
+  if (!session || !employeeDetails) {
+    return null; // Will redirect via useEffect
   }
 
   return (
@@ -74,21 +61,21 @@ export default function Dashboard() {
           <div className="flex justify-between items-center py-5">
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-gradient-to-br from-red-600 to-orange-600 rounded-lg flex items-center justify-center shadow-md">
-                <span className="text-white font-bold text-xl">L</span>
+                <span className="text-white font-bold text-xl">{countyName.charAt(0)}</span>
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-xl font-bold text-gray-900">Luna County</h1>
+                <h1 className="text-xl font-bold text-gray-900">{countyName}</h1>
                 <p className="text-xs text-gray-500">Employee Self-Service</p>
               </div>
             </div>
             
             <div className="flex items-center space-x-3 bg-gray-100 rounded-full px-4 py-2">
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                {employee.firstName?.charAt(0)}{employee.name?.split(' ')[1]?.charAt(0)}
+                {employeeDetails.name.first?.charAt(0)}{employeeDetails.name.last?.charAt(0)}
               </div>
               <div className="text-left hidden sm:block">
-                <p className="text-sm font-semibold text-gray-900">{employee.name}</p>
-                <p className="text-xs text-gray-500">{employee.id}</p>
+                <p className="text-sm font-semibold text-gray-900">{employeeDetails.name.first} {employeeDetails.name.last}</p>
+                <p className="text-xs text-gray-500">{employeeDetails.employeeNumber}</p>
               </div>
               <button
                 onClick={handleLogout}

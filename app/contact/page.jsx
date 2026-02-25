@@ -1,10 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Mail, Phone, MapPin, Clock, Send, CheckCircle } from 'lucide-react';
 
+const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
+
 export default function ContactPage() {
+  const { data: session, status } = useSession();
   const [formData, setFormData] = useState({
     subject: '',
     message: '',
@@ -14,6 +18,17 @@ export default function ContactPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  useEffect(() => {
+    // Wait for session to load
+    if (status === 'loading') return;
+    
+    // If no session, redirect to login
+    if (!session) {
+      router.push('/');
+      return;
+    }
+  }, [session, status, router]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -22,7 +37,7 @@ export default function ContactPage() {
     setTimeout(() => {
       setLoading(false);
       setSubmitted(true);
-
+      
       // Reset form after 3 seconds
       setTimeout(() => {
         setSubmitted(false);
@@ -38,6 +53,22 @@ export default function ContactPage() {
       [name]: value
     }));
   };
+
+  // Show loading while checking session
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null; // Will redirect via useEffect
+  }
 
   if (submitted) {
     return (
@@ -63,7 +94,6 @@ export default function ContactPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Header */}
       <header className="bg-white border-b-2 border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
@@ -74,13 +104,13 @@ export default function ContactPage() {
               <ArrowLeft size={20} />
               <span className="font-medium">Back to Dashboard</span>
             </button>
-
+            
             <div className="flex items-center space-x-4">
               <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-orange-600 rounded-lg flex items-center justify-center shadow-md">
-                <span className="text-white font-bold">L</span>
+                <span className="text-white font-bold">{countyName.charAt(0)}</span>
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-gray-900">Luna County</h1>
+                <h1 className="text-lg font-bold text-gray-900">{countyName}</h1>
                 <p className="text-xs text-gray-500">Employee Portal</p>
               </div>
             </div>
@@ -88,31 +118,27 @@ export default function ContactPage() {
         </div>
       </header>
 
-      {/* Content */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page Title */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Contact Human Resources</h2>
           <p className="text-gray-600">Get help with your questions or concerns</p>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Contact Information Sidebar */}
           <div className="lg:col-span-1 space-y-6">
-            {/* HR Contact Card */}
             <div className="bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl shadow-xl p-6 text-white">
               <div className="w-14 h-14 bg-white bg-opacity-30 backdrop-blur-sm rounded-xl flex items-center justify-center mb-4">
-                <Mail size={28} className="text-white" />
+                <Mail size={28} className="text-black" />
               </div>
               <h3 className="text-xl font-bold mb-4">HR Department</h3>
-
+              
               <div className="space-y-3">
                 <div className="flex items-start space-x-3">
                   <Mail size={18} className="text-purple-100 flex-shrink-0 mt-1" />
                   <div>
                     <p className="text-xs text-purple-100 font-medium mb-1">Email</p>
-                    <a href="mailto:hr@leacounty.gov" className="text-white font-semibold hover:underline">
-                      hr@leacounty.gov
+                    <a href={`mailto:hr@${countyName.toLowerCase().replace(/\s+/g, '')}.gov`} className="text-white font-semibold hover:underline">
+                      hr@{countyName.toLowerCase().replace(/\s+/g, '')}.gov
                     </a>
                   </div>
                 </div>
@@ -151,7 +177,6 @@ export default function ContactPage() {
               </div>
             </div>
 
-            {/* Quick Tips Card */}
             <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
               <h4 className="font-bold text-gray-900 mb-3 flex items-center">
                 <span className="text-xl mr-2">💡</span>
@@ -178,13 +203,11 @@ export default function ContactPage() {
             </div>
           </div>
 
-          {/* Contact Form */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
               <h3 className="text-2xl font-bold text-gray-900 mb-6">Send a Message</h3>
-
+              
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Subject Dropdown */}
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
                     Subject <span className="text-red-500">*</span>
@@ -194,7 +217,7 @@ export default function ContactPage() {
                     value={formData.subject}
                     onChange={handleChange}
                     required
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-gray-500"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
                   >
                     <option value="">Select a subject...</option>
                     <option value="general">General Question</option>
@@ -207,7 +230,6 @@ export default function ContactPage() {
                   </select>
                 </div>
 
-                {/* Urgency Level */}
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
                     Urgency Level
@@ -216,37 +238,39 @@ export default function ContactPage() {
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, urgency: 'low' }))}
-                      className={`px-4 py-3 rounded-xl border-2 transition-all font-medium text-gray-500 ${formData.urgency === 'low'
+                      className={`px-4 py-3 rounded-xl border-2 transition-all font-medium ${
+                        formData.urgency === 'low'
                           ? 'border-green-500 bg-green-50 text-green-700'
                           : 'border-gray-300 hover:border-gray-400'
-                        }`}
+                      }`}
                     >
                       Low
                     </button>
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, urgency: 'normal' }))}
-                      className={`px-4 py-3 rounded-xl border-2 transition-all font-medium text-gray-500 ${formData.urgency === 'normal'
+                      className={`px-4 py-3 rounded-xl border-2 transition-all font-medium ${
+                        formData.urgency === 'normal'
                           ? 'border-blue-500 bg-blue-50 text-blue-700'
                           : 'border-gray-300 hover:border-gray-400'
-                        }`}
+                      }`}
                     >
                       Normal
                     </button>
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, urgency: 'high' }))}
-                      className={`px-4 py-3 rounded-xl border-2 transition-all font-medium text-gray-500 ${formData.urgency === 'high'
+                      className={`px-4 py-3 rounded-xl border-2 transition-all font-medium ${
+                        formData.urgency === 'high'
                           ? 'border-red-500 bg-red-50 text-red-700'
                           : 'border-gray-300 hover:border-gray-400'
-                        }`}
+                      }`}
                     >
                       High
                     </button>
                   </div>
                 </div>
 
-                {/* Message Textarea */}
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
                     Message <span className="text-red-500">*</span>
@@ -258,14 +282,13 @@ export default function ContactPage() {
                     required
                     rows="8"
                     placeholder="Please describe your question or concern in detail..."
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all resize-none text-gray-500"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all resize-none"
                   ></textarea>
                   <p className="text-xs text-gray-500 mt-2">
                     {formData.message.length} characters
                   </p>
                 </div>
 
-                {/* Submit Button */}
                 <div className="flex items-center justify-between pt-4">
                   <p className="text-sm text-gray-600">
                     <span className="text-red-500">*</span> Required fields
@@ -291,7 +314,6 @@ export default function ContactPage() {
               </form>
             </div>
 
-            {/* Additional Help */}
             <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-6">
               <div className="flex items-start space-x-4">
                 <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -302,8 +324,10 @@ export default function ContactPage() {
                   <p className="text-gray-700 mb-3">
                     For urgent matters that require immediate attention, please call the HR office directly during business hours.
                   </p>
-                  <a href="tel:+15555551234"
-                    className="inline-flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                  <a
+                    href="tel:+15555551234"
+                    className="inline-flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  >
                     <Phone size={16} />
                     <span>Call (555) 555-1234</span>
                   </a>

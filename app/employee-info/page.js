@@ -1,28 +1,31 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, User, MapPin, Phone, Calendar, Briefcase, Shield, Mail } from 'lucide-react';
+import { ArrowLeft, User, MapPin, Calendar, Briefcase, Shield, Mail } from 'lucide-react';
+
+const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
+const countyState = process.env.NEXT_PUBLIC_COUNTY_STATE || 'State';
 
 export default function EmployeeInfoPage() {
-  const [employee, setEmployee] = useState(null);
+  const { data: session, status } = useSession();
   const [employeeDetails, setEmployeeDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    // Check if logged in
-    const stored = sessionStorage.getItem('employee');
-    if (!stored) {
+    // Wait for session to load
+    if (status === 'loading') return;
+    
+    // If no session, redirect to login
+    if (!session) {
       router.push('/');
       return;
     }
 
-    const emp = JSON.parse(stored);
-    setEmployee(emp);
-
-    // Fetch full employee details
-    fetch(`/api/employee/${emp.id}`)
+    // Fetch full employee details using session data
+    fetch(`/api/employee/${session.user.employeeNumber}`)
       .then(res => res.json())
       .then(data => {
         setEmployeeDetails(data);
@@ -32,9 +35,9 @@ export default function EmployeeInfoPage() {
         console.error('Error fetching employee details:', err);
         setLoading(false);
       });
-  }, [router]);
+  }, [session, status, router]);
 
-  if (loading) {
+  if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
         <div className="text-center">
@@ -45,20 +48,8 @@ export default function EmployeeInfoPage() {
     );
   }
 
-  if (!employee || !employeeDetails) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">Error loading employee data</p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Return to Dashboard
-          </button>
-        </div>
-      </div>
-    );
+  if (!session || !employeeDetails) {
+    return null; // Will redirect via useEffect
   }
 
   return (
@@ -77,10 +68,10 @@ export default function EmployeeInfoPage() {
             
             <div className="flex items-center space-x-4">
               <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-orange-600 rounded-lg flex items-center justify-center shadow-md">
-                <span className="text-white font-bold">L</span>
+                <span className="text-white font-bold">{countyName.charAt(0)}</span>
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-gray-900">Luna County</h1>
+                <h1 className="text-lg font-bold text-gray-900">{countyName}</h1>
                 <p className="text-xs text-gray-500">Employee Portal</p>
               </div>
             </div>
@@ -101,7 +92,7 @@ export default function EmployeeInfoPage() {
           <div className="flex items-start justify-between">
             <div className="flex items-center space-x-6">
               <div className="w-24 h-24 bg-white bg-opacity-30 backdrop-blur-sm rounded-2xl flex items-center justify-center shadow-lg">
-                <User size={48} className="text-white" />
+                <User size={48} className="text-black" />
               </div>
               <div>
                 <h3 className="text-3xl font-bold mb-2">{employeeDetails.name.full}</h3>
@@ -178,7 +169,7 @@ export default function EmployeeInfoPage() {
               
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">County</p>
-                <p className="text-lg font-semibold text-gray-900">Lea County, New Mexico</p>
+                <p className="text-lg font-semibold text-gray-900">{countyName}, {countyState}</p>
               </div>
             </div>
           </div>

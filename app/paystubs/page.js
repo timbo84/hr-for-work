@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Download, Calendar, DollarSign, FileText, Search, Filter } from 'lucide-react';
+import { ArrowLeft, Download, Calendar, DollarSign, FileText, Search, Filter, Printer } from 'lucide-react';
+
+const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
 
 export default function PayStubsPage() {
-  const [employee, setEmployee] = useState(null);
+  const { data: session, status } = useSession();
   const [payStubs, setPayStubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -13,18 +16,17 @@ export default function PayStubsPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Check if logged in
-    const stored = sessionStorage.getItem('employee');
-    if (!stored) {
+    // Wait for session to load
+    if (status === 'loading') return;
+
+    // If no session, redirect to login
+    if (!session) {
       router.push('/');
       return;
     }
 
-    const emp = JSON.parse(stored);
-    setEmployee(emp);
-
-    // Fetch pay stubs using the hidden employee ID
-    fetch(`/api/paystubs/${emp.hiddenId}`)
+    // Fetch pay stubs using session data
+    fetch(`/api/paystubs/${session.user.employeeNumber}`)
       .then(res => res.json())
       .then(data => {
         setPayStubs(data.payStubs || []);
@@ -34,21 +36,21 @@ export default function PayStubsPage() {
         console.error('Error fetching pay stubs:', err);
         setLoading(false);
       });
-  }, [router]);
+  }, [session, status, router]);
 
   // Get unique years from pay stubs for filtering
   const availableYears = ['all', ...new Set(
-    payStubs.map(stub => new Date().getFullYear()) // Would extract from actual dates when available
+    payStubs.map(stub => new Date().getFullYear())
   )];
 
   // Filter pay stubs based on search and year
   const filteredPayStubs = payStubs.filter(stub => {
-    const matchesSearch = stub.checkNumber?.toString().includes(searchTerm);
-    const matchesYear = selectedYear === 'all' || true; // Would filter by actual date when available
+    const matchesSearch = !searchTerm || stub.checkNumber?.toString().includes(searchTerm);
+    const matchesYear = selectedYear === 'all' || true;
     return matchesSearch && matchesYear;
   });
 
-  if (loading) {
+  if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
         <div className="text-center">
@@ -59,20 +61,8 @@ export default function PayStubsPage() {
     );
   }
 
-  if (!employee) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">Error loading employee data</p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Return to Dashboard
-          </button>
-        </div>
-      </div>
-    );
+  if (!session) {
+    return null; // Will redirect via useEffect
   }
 
   return (
@@ -88,13 +78,13 @@ export default function PayStubsPage() {
               <ArrowLeft size={20} />
               <span className="font-medium">Back to Dashboard</span>
             </button>
-            
+
             <div className="flex items-center space-x-4">
               <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-orange-600 rounded-lg flex items-center justify-center shadow-md">
-                <span className="text-white font-bold">L</span>
+                <span className="text-white font-bold">{countyName.charAt(0)}</span>
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-gray-900">Luna County</h1>
+                <h1 className="text-lg font-bold text-gray-900">{countyName}</h1>
                 <p className="text-xs text-gray-500">Employee Portal</p>
               </div>
             </div>
@@ -108,6 +98,26 @@ export default function PayStubsPage() {
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Pay Stubs</h2>
           <p className="text-gray-600">View and download your payment history</p>
+        </div>
+
+        {/* Info Banner - Historical Records Notice */}
+        <div className="bg-blue-50 border-l-4 border-blue-500 rounded-xl p-4 mb-6">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-blue-500 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-blue-700">
+                <span className="font-semibold">Recent Pay History:</span> Showing your most recent 100 pay stubs (approximately 4 years).
+                For records older than four years, please contact Human Resources at{' '}
+                <a href="mailto:hr@lunacounty.gov" className="underline hover:text-blue-800">
+                  hr@lunacounty.gov
+                </a> or call the HR office.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Summary Cards */}
@@ -145,13 +155,13 @@ export default function PayStubsPage() {
             {/* Search */}
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black" size={20} />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 <input
                   type="text"
                   placeholder="Search by check number..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-black"
+                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
                 />
               </div>
             </div>
@@ -159,11 +169,11 @@ export default function PayStubsPage() {
             {/* Year Filter */}
             <div className="sm:w-48">
               <div className="relative">
-                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black" size={20} />
+                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 <select
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all appearance-none bg-white cursor-pointer text-gray-500"
+                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all appearance-none bg-white cursor-pointer"
                 >
                   <option value="all">All Years</option>
                   {availableYears.filter(y => y !== 'all').map(year => (
@@ -191,15 +201,15 @@ export default function PayStubsPage() {
               </div>
               <h4 className="text-xl font-bold text-gray-900 mb-2">No Pay Stubs Found</h4>
               <p className="text-gray-600">
-                {searchTerm || selectedYear !== 'all' 
-                  ? 'Try adjusting your filters' 
-                  : 'No payment records available at this time'}
+                {searchTerm || selectedYear !== 'all'
+                  ? 'Try adjusting your filters'
+                  : 'Pay stub data is not yet available. Please contact HR for assistance.'}
               </p>
             </div>
           ) : (
             <div className="divide-y divide-gray-200">
               {filteredPayStubs.map((stub, index) => (
-                <div 
+                <div
                   key={index}
                   className="p-6 hover:bg-gray-50 transition-colors"
                 >
@@ -216,15 +226,26 @@ export default function PayStubsPage() {
                         <div className="flex flex-wrap gap-3 text-sm text-gray-600">
                           <div className="flex items-center space-x-1">
                             <Calendar size={14} />
-                            <span>Date not available</span>
+                            <span>Paid: {stub.payDate || 'N/A'}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <span>Period: {stub.periodStart} - {stub.periodEnd}</span>
                           </div>
                           <div className="flex items-center space-x-1">
                             <DollarSign size={14} />
                             <span className="font-semibold">Net: {stub.netPay}</span>
                           </div>
+                          <div className="flex items-center space-x-1">
+                            <span className="text-gray-500">Gross: {stub.grossPay}</span>
+                          </div>
                           {stub.bank && (
                             <div className="inline-flex items-center space-x-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-lg">
-                              <span className="text-xs font-bold">Bank: {stub.bank}</span>
+                              <span className="text-xs font-bold">{stub.bank === 'DD' ? 'Direct Deposit' : `Bank: ${stub.bank}`}</span>
+                            </div>
+                          )}
+                          {stub.department && (
+                            <div className="inline-flex items-center space-x-1 bg-green-100 text-green-800 px-2 py-1 rounded-lg">
+                              <span className="text-xs font-bold">Dept: {stub.department}</span>
                             </div>
                           )}
                         </div>
@@ -233,11 +254,11 @@ export default function PayStubsPage() {
 
                     {/* Right Side - Action */}
                     <button
-                      onClick={() => alert('Download functionality will be implemented with real pay stub data')}
+                      onClick={() => router.push(`/paystubs/${stub.checkNumber}`)}
                       className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg transform hover:scale-105 font-medium"
                     >
-                      <Download size={18} />
-                      <span>Download PDF</span>
+                      <Printer size={18} />
+                      <span>View & Print</span>
                     </button>
                   </div>
                 </div>

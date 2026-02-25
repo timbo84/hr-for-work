@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { getEmployee, formatIBMDate, maskSSN } from '../../../../lib/db';
 
 export async function GET(request, { params }) {
-  // AWAIT params in Next.js 15+
   const { id } = await params;
 
   // Validate employee ID
@@ -25,29 +24,29 @@ export async function GET(request, { params }) {
 
     // Format the response with clean data
     const response = {
-      employeeNumber: employee.EMEMP?.toString().trim(),
-      employeeHiddenId: employee.EMQEM,
+      employeeNumber: employee.IQEM?.toString().trim(),
+      employeeHiddenId: employee.EMQEM || employee.IQEM,
       name: {
-        first: employee.EMFNM?.trim() || '',
-        middle: employee.EMMNM?.trim() || '',
-        last: employee.EMLNM?.trim() || '',
-        full: `${employee.EMFNM?.trim()} ${employee.EMMNM?.trim()} ${employee.EMLNM?.trim()}`.replace(/\s+/g, ' ').trim()
+        first: employee.IFNM?.trim() || '',
+        middle: employee.IMNM?.trim() || '',
+        last: employee.ILNM?.trim() || '',
+        full: `${employee.IFNM?.trim()} ${employee.IMNM?.trim()} ${employee.ILNM?.trim()}`.replace(/\s+/g, ' ').trim()
       },
-      department: employee.EMOFF?.trim() || '',
-      position: employee.EMPOS?.trim() || '',
-      hireDate: formatIBMDate(employee.EMDOH),
-      dateOfBirth: formatIBMDate(employee.EMDOB),
-      ssn: maskSSN(employee['EMSS#']?.toString()),
+      department: 'Not Available', // INSWORKA doesn't have department field
+      position: employee.IPOS?.trim() || 'Not Available',
+      hireDate: formatIBMDate(employee.IDOH),
+      dateOfBirth: formatIBMDate(employee.IDOB),
+      ssn: maskSSN(employee['ISS#']?.toString()),
       address: {
-        street: employee.EMSTR?.trim() || '',
-        city: employee.EMCIT?.trim() || '',
-        state: employee.EMST?.trim() || '',
-        zip: employee.EMZP5?.toString().trim() || ''
+        street: employee.ISTR?.trim() || '',
+        city: employee.ICIT?.trim() || '',
+        state: employee.IST?.trim() || '',
+        zip: employee.IZP5?.toString().trim() || ''
       },
       employment: {
-        type: employee.EMFULL === 'F' ? 'Full Time' : 'Part Time',
-        status: employee.EMSTA === 1 ? 'Active' : 'Inactive',
-        permanent: employee.EMPERM === 'P' ? 'Permanent' : 'Temporary'
+        type: 'Full Time', // Default since we don't have this field
+        status: 'Active', // Default since we don't have this field
+        permanent: 'Permanent' // Default since we don't have this field
       }
     };
 
