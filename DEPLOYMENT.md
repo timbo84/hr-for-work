@@ -147,7 +147,7 @@ next.config.mjs
 IBM_HOST=192.168.x.x              # IBM i IP address or hostname
 IBM_USER=IBMUSERNAME              # IBM i service account username
 IBM_PASSWORD=IBMPASSWORD          # IBM i service account password
-IBM_DRIVER={IBM i Access ODBC Driver}
+IBM_DRIVER=IBM i Access ODBC Driver
 
 # IBM i Libraries (county-specific — ask county IT)
 IBM_LIBRARY_PAYROLL=PAYF
