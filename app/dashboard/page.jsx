@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
-import { FileText, User, Mail, LogOut, Calendar, Briefcase, Bell, BellOff } from 'lucide-react';
+import { FileText, User, Mail, LogOut, Calendar, Briefcase, Bell, BellOff, Shield } from 'lucide-react';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [pushPermission, setPushPermission] = useState('default');
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (status === 'loading') return; // Still loading session
@@ -45,6 +46,9 @@ export default function Dashboard() {
         console.error('Error fetching employee details:', err);
         setLoading(false);
       });
+
+    // Check admin access
+    fetch('/api/admin/check').then(r => r.json()).then(d => setIsAdmin(d.isAdmin));
 
     // Check push notification support & current subscription
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
@@ -236,7 +240,7 @@ export default function Dashboard() {
               <p className="text-sm text-gray-600">Coming soon</p>
             </button>
 
-            <button 
+            <button
               onClick={() => router.push('/contact')}
               className="p-6 bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200 rounded-2xl hover:border-purple-400 hover:shadow-lg transition-all group"
             >
@@ -246,6 +250,19 @@ export default function Dashboard() {
               <p className="font-bold text-gray-900 text-lg mb-1">Contact HR</p>
               <p className="text-sm text-gray-600">Get help</p>
             </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => router.push('/admin')}
+                className="p-6 bg-gradient-to-br from-slate-50 to-gray-100 border-2 border-slate-300 rounded-2xl hover:border-slate-500 hover:shadow-lg transition-all group"
+              >
+                <div className="w-14 h-14 bg-gradient-to-br from-slate-600 to-gray-800 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-md">
+                  <Shield className="text-white" size={28} />
+                </div>
+                <p className="font-bold text-gray-900 text-lg mb-1">Admin</p>
+                <p className="text-sm text-gray-600">Manage accounts</p>
+              </button>
+            )}
           </div>
         </div>
 
