@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /c/Users/Tim/Desktop/hrWebsite/hrwebsite && npx web-push generate-vapid-keys 2>&1)",
+      "Bash(cd /c/Users/Tim/Desktop/hrWebsite/hrwebsite && node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\" 2>&1)",
+      "Bash(cd /c/Users/Tim/Desktop/hrWebsite/hrwebsite && npm run build 2>&1)",
+      "Bash(ls /c/Users/Tim/Desktop/hrWebsite/hrwebsite/public/ && grep -l \"push\\\\|notificationclick\" /c/Users/Tim/Desktop/hrWebsite/hrwebsite/public/*.js 2>&1)"
+    ]
+  }
+}

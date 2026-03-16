@@ -10,7 +10,7 @@ import {
   isFirstLogin
 } from '../../../../lib/security-db';
 
-const handler = NextAuth({
+export const authOptions = {
   providers: [
     CredentialsProvider({
       name: 'Employee Credentials',
@@ -182,6 +182,8 @@ const handler = NextAuth({
     strategy: 'jwt',
     maxAge: 30 * 60
   }
-});
+};
+
+const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };

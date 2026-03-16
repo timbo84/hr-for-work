@@ -5,6 +5,7 @@ const withPWA = withPWAInit({
   cacheOnFrontEndNav: false,
   reloadOnOnline: true,
   disable: process.env.NODE_ENV === "development",
+  customWorkerSrc: "worker",
   fallbacks: {
     document: "/offline",
   },

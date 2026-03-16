@@ -3,7 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
-import { FileText, User, Mail, LogOut, Calendar, Briefcase } from 'lucide-react';
+import { FileText, User, Mail, LogOut, Calendar, Briefcase, Bell, BellOff } from 'lucide-react';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
 
 const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
 
@@ -13,9 +20,15 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // Push notification state
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushPermission, setPushPermission] = useState('default');
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+
   useEffect(() => {
     if (status === 'loading') return; // Still loading session
-    
+
     if (!session) {
       router.push('/');
       return;
@@ -32,7 +45,68 @@ export default function Dashboard() {
         console.error('Error fetching employee details:', err);
         setLoading(false);
       });
+
+    // Check push notification support & current subscription
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
+      setPushSupported(true);
+      setPushPermission(Notification.permission);
+
+      navigator.serviceWorker.ready.then(async (reg) => {
+        const existing = await reg.pushManager.getSubscription();
+        setPushSubscribed(!!existing);
+      });
+    }
   }, [session, status, router]);
+
+  const handleEnablePush = async () => {
+    setPushLoading(true);
+    try {
+      const permission = await Notification.requestPermission();
+      setPushPermission(permission);
+      if (permission !== 'granted') return;
+
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(
+          process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+        ),
+      });
+
+      const res = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscription.toJSON()),
+      });
+
+      if (res.ok) setPushSubscribed(true);
+    } catch (err) {
+      console.error('Push subscribe error:', err);
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  const handleDisablePush = async () => {
+    setPushLoading(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = await reg.pushManager.getSubscription();
+      if (subscription) {
+        await fetch('/api/push/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        });
+        await subscription.unsubscribe();
+        setPushSubscribed(false);
+      }
+    } catch (err) {
+      console.error('Push unsubscribe error:', err);
+    } finally {
+      setPushLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     signOut({ callbackUrl: '/' });
@@ -197,6 +271,51 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Push Notification Opt-in */}
+        {pushSupported && (
+          <div className="mt-6 bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+                  <Bell className="text-white" size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Pay Stub Notifications</h3>
+                  {pushPermission === 'denied' ? (
+                    <p className="text-sm text-red-600">Notifications are blocked in your browser settings.</p>
+                  ) : pushSubscribed ? (
+                    <p className="text-sm text-gray-600">You will be notified when a new pay stub is available.</p>
+                  ) : (
+                    <p className="text-sm text-gray-600">Get notified automatically when a new pay stub is ready.</p>
+                  )}
+                </div>
+              </div>
+
+              {pushPermission !== 'denied' && (
+                pushSubscribed ? (
+                  <button
+                    onClick={handleDisablePush}
+                    disabled={pushLoading}
+                    className="flex items-center space-x-2 px-4 py-2 border-2 border-red-400 text-red-600 rounded-xl hover:bg-red-50 transition-colors font-semibold disabled:opacity-50"
+                  >
+                    <BellOff size={16} />
+                    <span>{pushLoading ? 'Turning off…' : 'Turn Off'}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleEnablePush}
+                    disabled={pushLoading}
+                    className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-violet-500 to-indigo-600 text-white rounded-xl hover:opacity-90 transition-opacity font-semibold shadow-md disabled:opacity-50"
+                  >
+                    <Bell size={16} />
+                    <span>{pushLoading ? 'Enabling…' : 'Enable'}</span>
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Notice */}
         <div className="mt-6 bg-gradient-to-r from-orange-100 to-yellow-100 border-2 border-orange-300 rounded-2xl p-6">

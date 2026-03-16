@@ -1247,11 +1247,11 @@ async function findEmployeesWithPaystubs() {
 async function getLoginForEmployee(empNum) {
   try {
     console.log(`🔐 Getting login credentials for employee #${empNum}...\n`);
-    const connection = await odbc.connect(getConnectionString('PAYF'));
+    const connection = await odbc.connect(getConnectionString(config.libraryEmployee));
 
     const result = await connection.query(`
       SELECT EMEMP, EMFNM, EMLNM, "EMSS#", EMQEM, EMDOB
-      FROM PAYF.EMPMASY
+      FROM ${config.libraryEmployee}.${config.tableEmployee}
       WHERE TRIM(EMEMP) = ?
       FETCH FIRST 1 ROW ONLY
     `, [empNum.toString()]);
@@ -1267,20 +1267,31 @@ async function getLoginForEmployee(empNum) {
     const last4 = ssn.slice(-4).padStart(4, '0');
     const empNumber = typeof emp.EMEMP === 'string' ? emp.EMEMP.trim() : emp.EMEMP;
 
+    // Format EMDOB (YYYYMMDD) → MM/DD/YYYY for the reset form
+    const dobRaw = emp.EMDOB?.toString().padStart(8, '0') || '00000000';
+    const dobFormatted = dobRaw !== '00000000'
+      ? `${dobRaw.slice(4, 6)}/${dobRaw.slice(6, 8)}/${dobRaw.slice(0, 4)}`
+      : '(no DOB on file)';
+
     console.log('✅ Login Credentials:\n');
-    console.log('═'.repeat(50));
-    console.log(`Name: ${emp.EMFNM?.trim()} ${emp.EMLNM?.trim()}`);
-    console.log(`Employee #: ${empNumber}`);
-    console.log(`Last 4 of SSN: ${last4}`);
-    console.log(`Hidden ID (EMQEM): ${emp.EMQEM} DOB ${emp.EMDOB}`);
-    console.log('═'.repeat(50));
+    console.log('═'.repeat(55));
+    console.log(`  Name:          ${emp.EMFNM?.trim()} ${emp.EMLNM?.trim()}`);
+    console.log(`  Employee #:    ${empNumber}`);
+    console.log(`  Last 4 SSN:    ${last4}`);
+    console.log(`  Date of Birth: ${dobFormatted}  (raw: ${dobRaw})`);
+    console.log(`  Hidden ID:     ${emp.EMQEM}`);
+    console.log('═'.repeat(55));
+    console.log('\n📋 Use these values to test the password reset flow:');
+    console.log(`  /forgot-password → Employee #: ${empNumber}`);
+    console.log(`                   → Last 4 SSN: ${last4}`);
+    console.log(`                   → Date of Birth: ${dobFormatted}`);
 
     // Also check how many paystubs they have
     const stubCount = await connection.query(`
-      SELECT COUNT(*) as CNT FROM PAYF.PAYNETZZ WHERE PNQEM = ?
+      SELECT COUNT(*) as CNT FROM PAYF.HISCTLZZ WHERE HCQEM = ?
     `, [emp.EMQEM]);
 
-    console.log(`\n📋 This employee has ${stubCount[0].CNT} paystubs\n`);
+    console.log(`\n📄 Paystub count: ${stubCount[0].CNT}\n`);
 
     await connection.close();
   } catch (error) {

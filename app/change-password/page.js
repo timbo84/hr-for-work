@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Shield, Eye, EyeOff, Check, X, CheckCircle } from 'lucide-react';
-import { signOut, signIn } from 'next-auth/react';
+import { Eye, EyeOff, Check, X, CheckCircle } from 'lucide-react';
+import { signOut } from 'next-auth/react';
+
+const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
 
 export default function ChangePasswordPage() {
   const { data: session } = useSession();
@@ -109,18 +111,16 @@ export default function ChangePasswordPage() {
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
 
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Shield size={32} className="text-white" />
+        <div className="bg-gradient-to-r from-red-600 via-orange-600 to-red-700 text-white p-10 text-center -mx-8 -mt-8 mb-8 rounded-t-2xl">
+          <div className="w-20 h-20 bg-white bg-opacity-30 backdrop-blur-sm rounded-2xl mx-auto mb-4 flex items-center justify-center">
+            <span className="text-4xl font-bold text-black">
+              {countyName.charAt(0)}
+            </span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Set Your Password</h1>
-          <p className="text-gray-600 mt-2">
-            Welcome! For security, please create a password for your account.
-          </p>
+          <h2 className="text-3xl font-bold mb-2">{countyName}</h2>
+          <p className="text-red-100 text-sm">Set Your Password</p>
           {session?.user?.name && (
-            <p className="text-orange-600 font-semibold mt-1">
-              {session.user.name}
-            </p>
+            <p className="text-white font-semibold mt-2 text-base">{session.user.name}</p>
           )}
         </div>
 
