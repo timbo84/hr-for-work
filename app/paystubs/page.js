@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Download, Calendar, DollarSign, FileText, Search, Filter, Printer } from 'lucide-react';
 
 const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
+const hrEmail = process.env.NEXT_PUBLIC_HR_EMAIL || `hr@${(process.env.NEXT_PUBLIC_COUNTY_NAME || 'county').toLowerCase().replace(/\s+/g, '')}.gov`;
 
 export default function PayStubsPage() {
   const { data: session, status } = useSession();
@@ -112,8 +113,8 @@ export default function PayStubsPage() {
               <p className="text-sm text-blue-700">
                 <span className="font-semibold">Recent Pay History:</span> Showing your most recent 100 pay stubs (approximately 4 years).
                 For records older than four years, please contact Human Resources at{' '}
-                <a href="mailto:hr@lunacounty.gov" className="underline hover:text-blue-800">
-                  hr@lunacounty.gov
+                <a href={`mailto:${hrEmail}`} className="underline hover:text-blue-800">
+                  {hrEmail}
                 </a> or call the HR office.
               </p>
             </div>

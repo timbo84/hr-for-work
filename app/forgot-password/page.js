@@ -19,6 +19,7 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [employeeName, setEmployeeName] = useState('');
+  const [resetToken, setResetToken] = useState('');
 
   // Auto-format DOB as MM/DD/YYYY
   const handleDobChange = (e) => {
@@ -54,8 +55,9 @@ export default function ForgotPasswordPage() {
         return;
       }
 
-      // Verification successful
+      // Verification successful — store the one-time reset token
       setEmployeeName(data.name || '');
+      setResetToken(data.resetToken || '');
       setStep(2);
       setLoading(false);
     } catch (err) {
@@ -108,7 +110,8 @@ export default function ForgotPasswordPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeNumber: formData.employeeNumber.trim(),
-          newPassword: formData.newPassword
+          newPassword: formData.newPassword,
+          resetToken
         })
       });
 

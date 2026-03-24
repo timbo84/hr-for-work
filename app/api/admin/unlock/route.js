@@ -1,3 +1,4 @@
+const DEBUG = process.env.NODE_ENV === 'development';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
@@ -17,7 +18,7 @@ export async function POST(request) {
   }
 
   resetFailedAttempts(employeeNumber);
-  console.log(`✅ Admin ${session.user.employeeNumber} unlocked account: ${employeeNumber}`);
+  if (DEBUG) console.log(`✅ Admin ${session.user.employeeNumber} unlocked account: ${employeeNumber}`);
 
   return NextResponse.json({ success: true });
 }

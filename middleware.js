@@ -33,6 +33,7 @@ export const config = {
     '/paystubs/:path*',
     '/contact/:path*',
     '/change-password/:path*',
-    '/admin/:path*'
+    '/admin/:path*',
+    '/w2/:path*'
   ]
 };

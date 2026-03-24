@@ -1,14 +1,24 @@
+const DEBUG = process.env.NODE_ENV === 'development';
 import { NextResponse } from 'next/server';
-import { setPassword, validatePasswordStrength, resetFailedAttempts, createEmployeeSecurity } from '../../../../lib/security-db';
+import { setPassword, validatePasswordStrength, resetFailedAttempts, createEmployeeSecurity, validateResetToken } from '../../../../lib/security-db';
 
 export async function POST(request) {
   try {
-    const { employeeNumber, newPassword } = await request.json();
+    const { employeeNumber, newPassword, resetToken } = await request.json();
 
-    if (!employeeNumber || !newPassword) {
+    if (!employeeNumber || !newPassword || !resetToken) {
       return NextResponse.json(
-        { error: 'Employee number and password are required' },
+        { error: 'Invalid request' },
         { status: 400 }
+      );
+    }
+
+    // Verify the reset token — must have come from a successful verify-identity call
+    const tokenValid = validateResetToken(employeeNumber, resetToken);
+    if (!tokenValid) {
+      return NextResponse.json(
+        { error: 'Your reset session has expired. Please start over.' },
+        { status: 401 }
       );
     }
 
@@ -28,7 +38,7 @@ export async function POST(request) {
     setPassword(employeeNumber, newPassword);
     resetFailedAttempts(employeeNumber);
 
-    console.log(`✅ Password reset for employee: ${employeeNumber}`);
+    if (DEBUG) console.log(`✅ Password reset for employee: ${employeeNumber}`);
 
     return NextResponse.json({
       success: true,

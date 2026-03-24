@@ -1,3 +1,4 @@
+const DEBUG = process.env.NODE_ENV === 'development';
 import { NextResponse } from 'next/server';
 import { setPassword, validatePasswordStrength } from '../../../../lib/security-db';
 
@@ -5,7 +6,7 @@ export async function POST(request) {
   try {
     const { employeeNumber, newPassword } = await request.json();
 
-    console.log('Change password request for:', employeeNumber);
+    if (DEBUG) console.log('Change password request for:', employeeNumber);
 
     if (!employeeNumber || !newPassword) {
       return NextResponse.json(
@@ -25,7 +26,7 @@ export async function POST(request) {
 
     // Set the password
     setPassword(employeeNumber, newPassword);
-    console.log('✅ Password set for employee:', employeeNumber);
+    if (DEBUG) console.log('✅ Password set for employee:', employeeNumber);
 
     return NextResponse.json({
       success: true,

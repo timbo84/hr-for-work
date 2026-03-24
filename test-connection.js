@@ -1610,7 +1610,7 @@ async function getLoginFor2656() {
     const result = await connection.query(`
       SELECT EMEMP, EMFNM, EMLNM, "EMSS#", EMQEM
       FROM PAYF.EMPMASZZ
-      WHERE TRIM(EMEMP) = '2656'
+      WHERE TRIM(EMEMP) = '360'
     `);
 
     if (result.length === 0) {
@@ -1855,6 +1855,621 @@ async function testWithoutAliases() {
 }
 
 // ===========================================
+// W-2 EXPLORATION FUNCTIONS
+// ===========================================
+
+async function findW2Tables() {
+  try {
+    console.log('🔍 Searching for W-2 related tables across all accessible libraries...\n');
+    const connection = await odbc.connect(getConnectionString());
+
+    // Search QSYS2 catalog for anything W-2 related
+    const result = await connection.query(`
+      SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TEXT
+      FROM QSYS2.SYSTABLES
+      WHERE TABLE_NAME LIKE '%W2%'
+         OR TABLE_NAME LIKE '%TAX%'
+         OR TABLE_NAME LIKE '%WAGE%'
+         OR TABLE_NAME LIKE '%1099%'
+      ORDER BY TABLE_SCHEMA, TABLE_NAME
+    `);
+
+    console.log(`Found ${result.length} potential W-2 / tax tables in catalog:\n`);
+    console.log('='.repeat(70));
+    result.forEach(t => {
+      console.log(`  ${t.TABLE_SCHEMA.padEnd(15)} ${t.TABLE_NAME.padEnd(25)} ${t.TABLE_TEXT || ''}`);
+    });
+    console.log('='.repeat(70));
+
+    await connection.close();
+
+    // Now probe the most common Triadic W-2 table names directly
+    console.log('\n\n📋 Testing common Triadic W-2 table locations...\n');
+    console.log('='.repeat(70));
+
+    // Names confirmed via QSYS2.SYSTABLES catalog scan — W2ADJ* is the Triadic W-2 pattern
+    const candidates = [
+      { lib: 'PAYF',   table: 'W2ADJZZ',    desc: 'W-2 adjustment file (ZZ - primary)' },
+      { lib: 'PAYF',   table: 'W2ADJA',     desc: 'W-2 adjustment by emp/code#' },
+      { lib: 'PAYF',   table: 'W2ADJB',     desc: 'W-2 adjustment joined by employee' },
+      { lib: 'PAYF',   table: 'W2REPORT',   desc: 'W-2 report/diskette file' },
+      { lib: 'PAYF',   table: 'W2REPORT21', desc: 'W-2 report file (2021+)' },
+      { lib: 'MHPAYF', table: 'W2ADJZZ',    desc: 'W-2 adjustment (MHPAYF)' },
+      { lib: 'PAYF19', table: 'W2ADJZZ',    desc: 'W-2 adjustment (PAYF19)' },
+      { lib: 'PAYF20', table: 'W2ADJZZ',    desc: 'W-2 adjustment (PAYF20)' },
+      { lib: 'ENPAYF', table: 'W2ADJZZ',    desc: 'W-2 adjustment (ENPAYF)' },
+    ];
+
+    const found = [];
+
+    for (const c of candidates) {
+      try {
+        const conn = await odbc.connect(getConnectionString(c.lib));
+        const cnt = await conn.query(`SELECT COUNT(*) as CNT FROM ${c.lib}.${c.table}`);
+        console.log(`✅ ${c.lib}.${c.table.padEnd(15)} ${cnt[0].CNT.toString().padEnd(10)} records  — ${c.desc}`);
+        found.push({ ...c, records: cnt[0].CNT });
+        await conn.close();
+      } catch {
+        console.log(`❌ ${c.lib}.${c.table.padEnd(15)} Not accessible`);
+      }
+    }
+
+    console.log('='.repeat(70));
+
+    if (found.length === 0) {
+      console.log('\n⚠️  No W-2 tables found under common names.');
+      console.log('   Run findW2Tables() to see the full catalog list above,');
+      console.log('   then try exploreW2Table(\'LIBNAME\', \'TABLENAME\') with whatever was found.');
+      return;
+    }
+
+    console.log(`\n✅ Found ${found.length} accessible W-2 table(s)!\n`);
+    found.forEach(t => console.log(`   • ${t.lib}.${t.table} (${t.records} records) — ${t.desc}`));
+
+    // Auto-explore the first one with data
+    const withData = found.find(t => t.records > 0);
+    if (withData) {
+      console.log(`\n\n🔬 Auto-exploring ${withData.lib}.${withData.table}...\n`);
+      await exploreW2Table(withData.lib, withData.table);
+    }
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+async function exploreW2Table(library, tableName) {
+  try {
+    console.log(`📋 Exploring ${library}.${tableName}...\n`);
+    const connection = await odbc.connect(getConnectionString(library));
+
+    // Column list
+    console.log('Columns:\n');
+    console.log('='.repeat(60));
+    const cols = await connection.columns(null, library, tableName, null);
+    cols.forEach(col => {
+      console.log(`  ${col.COLUMN_NAME.padEnd(20)} ${col.TYPE_NAME.padEnd(15)} (${col.COLUMN_SIZE})`);
+    });
+    console.log('='.repeat(60));
+
+    // Sample record — all non-empty fields
+    console.log('\n\nSample record (non-empty fields only):\n');
+    const sample = await connection.query(`SELECT * FROM ${library}.${tableName} FETCH FIRST 1 ROW ONLY`);
+    if (sample.length > 0) {
+      Object.entries(sample[0]).forEach(([k, v]) => {
+        if (v !== null && v !== '' && v !== 0) {
+          console.log(`  ${k.padEnd(20)} = ${v}`);
+        }
+      });
+    }
+
+    // Look for year field and employee link field
+    const colNames = cols.map(c => c.COLUMN_NAME);
+    const yearFields = colNames.filter(c => c.includes('YR') || c.includes('YEAR') || c.includes('TAX'));
+    const empFields  = colNames.filter(c => c.includes('QEM') || c.includes('EMP') || c.includes('SSN'));
+
+    console.log('\n\n🔑 Key fields detected:');
+    console.log(`  Year-related:     ${yearFields.length ? yearFields.join(', ') : '(none found)'}`);
+    console.log(`  Employee-related: ${empFields.length  ? empFields.join(', ')  : '(none found)'}`);
+
+    // If there's a QEM field, try to link to employee #360 as a test
+    const qemField = colNames.find(c => c.includes('QEM'));
+    if (qemField) {
+      console.log(`\n\n🔗 Testing employee link via ${qemField} using emp #360...\n`);
+      const empConn = await odbc.connect(getConnectionString(config.libraryEmployee));
+      const empRow = await empConn.query(
+        `SELECT EMQEM FROM ${config.libraryEmployee}.${config.tableEmployee} WHERE TRIM(EMEMP) = '360' FETCH FIRST 1 ROW ONLY`
+      );
+      await empConn.close();
+
+      if (empRow.length > 0) {
+        const emqem = empRow[0].EMQEM;
+        const w2rows = await connection.query(
+          `SELECT * FROM ${library}.${tableName} WHERE ${qemField} = ? FETCH FIRST 5 ROWS ONLY`,
+          [emqem]
+        );
+        console.log(`  Employee #360 EMQEM: ${emqem}`);
+        console.log(`  W-2 rows found:      ${w2rows.length}`);
+        if (w2rows.length > 0) {
+          console.log('\n  ✅ W-2 data linked successfully! First row:\n');
+          Object.entries(w2rows[0]).forEach(([k, v]) => {
+            if (v !== null && v !== '' && v !== 0) {
+              console.log(`    ${k.padEnd(20)} = ${v}`);
+            }
+          });
+        } else {
+          console.log('  ⚠️  No W-2 rows for emp #360 (they may not have one yet — try another employee)');
+        }
+      }
+    }
+
+    // Show distinct years available
+    const yearField = yearFields[0];
+    if (yearField) {
+      const years = await connection.query(
+        `SELECT DISTINCT ${yearField} FROM ${library}.${tableName} ORDER BY ${yearField} DESC FETCH FIRST 10 ROWS ONLY`
+      );
+      console.log(`\n\n📅 Tax years available (${yearField}):`);
+      years.forEach(r => console.log(`   ${r[yearField]}`));
+    }
+
+    await connection.close();
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+async function scanPAYFW2Tables() {
+  try {
+    console.log('🔍 Scanning ALL W2* tables in PAYF library (Luna County only)...\n');
+    const connection = await odbc.connect(getConnectionString('PAYF'));
+
+    const result = await connection.query(`
+      SELECT TABLE_NAME, TABLE_TEXT
+      FROM QSYS2.SYSTABLES
+      WHERE TABLE_SCHEMA = 'PAYF'
+        AND TABLE_NAME LIKE '%W2%'
+      ORDER BY TABLE_NAME
+    `);
+
+    console.log(`Found ${result.length} W2* table(s) in PAYF:\n`);
+    console.log('='.repeat(60));
+    result.forEach(t => console.log(`  ${t.TABLE_NAME.padEnd(25)} ${t.TABLE_TEXT || ''}`));
+    console.log('='.repeat(60));
+
+    // Check record count and tax year for each
+    console.log('\n📋 Record counts and tax years:\n');
+    for (const t of result) {
+      try {
+        const cnt = await connection.query(`SELECT COUNT(*) as CNT FROM PAYF.${t.TABLE_NAME}`);
+        const total = cnt[0].CNT;
+        if (total === 0) { console.log(`  ${t.TABLE_NAME.padEnd(25)} 0 records`); continue; }
+
+        let yearInfo = '';
+        try {
+          const re = await connection.query(
+            `SELECT DISTINCT SUBSTR(DATAD, 3, 4) AS YR FROM PAYF.${t.TABLE_NAME} WHERE SUBSTR(DATAD, 1, 2) = 'RE' FETCH FIRST 5 ROWS ONLY`
+          );
+          if (re.length > 0) yearInfo = `  tax years: ${re.map(r => r.YR).join(', ')}`;
+        } catch { /* no DATAD column */ }
+
+        console.log(`  ✅ ${t.TABLE_NAME.padEnd(25)} ${total.toString().padEnd(8)} records${yearInfo}`);
+      } catch (e) {
+        console.log(`  ❌ ${t.TABLE_NAME.padEnd(25)} error: ${e.message}`);
+      }
+    }
+
+    await connection.close();
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+async function scanLibraryW2Tables(library) {
+  try {
+    console.log(`🔍 Scanning ALL W2* tables in ${library}...\n`);
+    const connection = await odbc.connect(getConnectionString(library));
+
+    const result = await connection.query(`
+      SELECT TABLE_NAME, TABLE_TEXT
+      FROM QSYS2.SYSTABLES
+      WHERE TABLE_SCHEMA = '${library}'
+        AND TABLE_NAME LIKE '%W2%'
+      ORDER BY TABLE_NAME
+    `);
+
+    console.log(`Found ${result.length} W2* table(s) in ${library}:\n`);
+    console.log('='.repeat(60));
+    result.forEach(t => console.log(`  ${t.TABLE_NAME.padEnd(25)} ${t.TABLE_TEXT || ''}`));
+    console.log('='.repeat(60));
+
+    console.log('\n📋 Record counts and tax years:\n');
+    for (const t of result) {
+      try {
+        const cnt = await connection.query(`SELECT COUNT(*) as CNT FROM ${library}.${t.TABLE_NAME}`);
+        const total = cnt[0].CNT;
+        if (total === 0) { console.log(`  ${t.TABLE_NAME.padEnd(25)} 0 records`); continue; }
+
+        let yearInfo = '';
+        try {
+          const re = await connection.query(
+            `SELECT DISTINCT SUBSTR(DATAD, 3, 4) AS YR FROM ${library}.${t.TABLE_NAME} WHERE SUBSTR(DATAD, 1, 2) = 'RE' FETCH FIRST 5 ROWS ONLY`
+          );
+          if (re.length > 0) yearInfo = `  tax years: ${re.map(r => r.YR).join(', ')}`;
+        } catch { /* no DATAD column */ }
+
+        console.log(`  ✅ ${t.TABLE_NAME.padEnd(25)} ${total.toString().padEnd(8)} records${yearInfo}`);
+      } catch (e) {
+        console.log(`  ❌ ${t.TABLE_NAME.padEnd(25)} error: ${e.message}`);
+      }
+    }
+
+    await connection.close();
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+async function scanPAYF19W2Tables() {
+  try {
+    console.log('🔍 Scanning ALL W2* tables in PAYF19 library (Luna County archive)...\n');
+    const connection = await odbc.connect(getConnectionString('PAYF19'));
+
+    const result = await connection.query(`
+      SELECT TABLE_NAME, TABLE_TEXT
+      FROM QSYS2.SYSTABLES
+      WHERE TABLE_SCHEMA = 'PAYF19'
+        AND TABLE_NAME LIKE '%W2%'
+      ORDER BY TABLE_NAME
+    `);
+
+    console.log(`Found ${result.length} W2* table(s) in PAYF19:\n`);
+    console.log('='.repeat(60));
+    result.forEach(t => console.log(`  ${t.TABLE_NAME.padEnd(25)} ${t.TABLE_TEXT || ''}`));
+    console.log('='.repeat(60));
+
+    console.log('\n📋 Record counts and tax years:\n');
+    for (const t of result) {
+      try {
+        const cnt = await connection.query(`SELECT COUNT(*) as CNT FROM PAYF19.${t.TABLE_NAME}`);
+        const total = cnt[0].CNT;
+        if (total === 0) { console.log(`  ${t.TABLE_NAME.padEnd(25)} 0 records`); continue; }
+
+        let yearInfo = '';
+        try {
+          const re = await connection.query(
+            `SELECT DISTINCT SUBSTR(DATAD, 3, 4) AS YR FROM PAYF19.${t.TABLE_NAME} WHERE SUBSTR(DATAD, 1, 2) = 'RE' FETCH FIRST 5 ROWS ONLY`
+          );
+          if (re.length > 0) yearInfo = `  tax years: ${re.map(r => r.YR).join(', ')}`;
+        } catch { /* no DATAD column */ }
+
+        console.log(`  ✅ ${t.TABLE_NAME.padEnd(25)} ${total.toString().padEnd(8)} records${yearInfo}`);
+      } catch (e) {
+        console.log(`  ❌ ${t.TABLE_NAME.padEnd(25)} error: ${e.message}`);
+      }
+    }
+
+    await connection.close();
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+async function scanAllW2ReportTables() {
+  try {
+    console.log('🔍 Scanning QSYS2 catalog for ALL W2REPORT* tables across all libraries...\n');
+    const connection = await odbc.connect(getConnectionString());
+
+    const result = await connection.query(`
+      SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TEXT
+      FROM QSYS2.SYSTABLES
+      WHERE TABLE_NAME LIKE 'W2REPORT%'
+      ORDER BY TABLE_SCHEMA, TABLE_NAME
+    `);
+
+    console.log(`Found ${result.length} W2REPORT* table(s):\n`);
+    console.log('='.repeat(70));
+    result.forEach(t => {
+      console.log(`  ${t.TABLE_SCHEMA.padEnd(15)} ${t.TABLE_NAME.padEnd(25)} ${t.TABLE_TEXT || ''}`);
+    });
+    console.log('='.repeat(70));
+    await connection.close();
+
+    // Probe each one for record count and tax year
+    console.log('\n📋 Checking record counts and tax years...\n');
+    for (const t of result) {
+      try {
+        const conn = await odbc.connect(getConnectionString(t.TABLE_SCHEMA));
+        const cnt = await conn.query(`SELECT COUNT(*) as CNT FROM ${t.TABLE_SCHEMA}.${t.TABLE_NAME}`);
+        const total = cnt[0].CNT;
+
+        // Check tax year from RE (employer) records
+        let yearInfo = '';
+        try {
+          const re = await conn.query(
+            `SELECT DISTINCT SUBSTR(DATAD, 3, 4) AS YR FROM ${t.TABLE_SCHEMA}.${t.TABLE_NAME} WHERE SUBSTR(DATAD, 1, 2) = 'RE' FETCH FIRST 10 ROWS ONLY`
+          );
+          if (re.length > 0) yearInfo = `  tax years: ${re.map(r => r.YR).join(', ')}`;
+        } catch { /* no DATAD column */ }
+
+        console.log(`  ✅ ${t.TABLE_SCHEMA}.${t.TABLE_NAME.padEnd(20)} ${total.toString().padEnd(8)} records${yearInfo}`);
+        await conn.close();
+      } catch {
+        console.log(`  ❌ ${t.TABLE_SCHEMA}.${t.TABLE_NAME.padEnd(20)} not accessible`);
+      }
+    }
+
+    console.log('\n💡 Use exploreW2Table(\'LIBRARY\', \'TABLENAME\') to inspect any of these.');
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+async function parseW2Table(library, tableName) {
+  try {
+    console.log(`📄 Parsing ${library}.${tableName} EFW2 records...\n`);
+    const connection = await odbc.connect(getConnectionString(library));
+
+    const all = await connection.query(`SELECT DATAD FROM ${library}.${tableName}`);
+    console.log(`Total records: ${all.length}`);
+
+    const typeCounts = {};
+    all.forEach(r => {
+      const t = (r.DATAD || '').substring(0, 2).trim();
+      typeCounts[t] = (typeCounts[t] || 0) + 1;
+    });
+    console.log('Record types:');
+    Object.entries(typeCounts).forEach(([t, n]) => console.log(`  ${t.padEnd(4)} = ${n}`));
+
+    const rwRecords = all.filter(r => (r.DATAD || '').startsWith('RW'));
+    console.log(`\n📋 Showing first 5 of ${rwRecords.length} employee (RW) records:\n`);
+
+    const parseCents = (str) => {
+      const n = parseInt((str || '').trim(), 10);
+      return isNaN(n) ? 0 : n / 100;
+    };
+    const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+
+    rwRecords.slice(0, 5).forEach((r, i) => {
+      const d = r.DATAD || '';
+      const ssn   = d.substring(2, 11).trim();
+      const first = d.substring(11, 26).trim();
+      const middle = d.substring(26, 41).trim();
+      const last  = d.substring(41, 61).trim();
+      const mi    = middle ? ` ${middle[0]}.` : '';
+
+      const box1 = parseCents(d.substring(187, 198));
+      const box2 = parseCents(d.substring(198, 209));
+      const box3 = parseCents(d.substring(209, 220));
+      const box4 = parseCents(d.substring(220, 231));
+      const box5 = parseCents(d.substring(231, 242));
+      const box6 = parseCents(d.substring(242, 253));
+
+      console.log(`\nRecord ${i + 1}: ${first}${mi} ${last}  (SSN last 4: ${ssn.slice(-4)})`);
+      console.log(`  Box 1  Wages:               ${fmt(box1)}`);
+      console.log(`  Box 2  Fed tax withheld:     ${fmt(box2)}`);
+      console.log(`  Box 3  SS wages:             ${fmt(box3)}`);
+      console.log(`  Box 4  SS tax:               ${fmt(box4)}`);
+      console.log(`  Box 5  Medicare wages:       ${fmt(box5)}`);
+      console.log(`  Box 6  Medicare tax:         ${fmt(box6)}`);
+    });
+
+    await connection.close();
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+async function parseW2Report21() {
+  try {
+    console.log('📄 Parsing W2REPORT21 EFW2 records...\n');
+    const connection = await odbc.connect(getConnectionString('PAYF'));
+
+    // Get all records
+    const all = await connection.query(`SELECT DATAD FROM PAYF.W2REPORT21`);
+    console.log(`Total records: ${all.length}\n`);
+
+    // Tally record types
+    const typeCounts = {};
+    all.forEach(r => {
+      const t = r.DATAD.substring(0, 2).trim();
+      typeCounts[t] = (typeCounts[t] || 0) + 1;
+    });
+    console.log('Record types found:');
+    Object.entries(typeCounts).forEach(([t, n]) => console.log(`  ${t.padEnd(4)} = ${n} records`));
+
+    // Pull RW records (employee wage records)
+    const rwRecords = all.filter(r => r.DATAD.startsWith('RW'));
+    console.log(`\n\nEmployee (RW) records: ${rwRecords.length}\n`);
+
+    if (rwRecords.length === 0) {
+      console.log('No RW records found — W-2 employee data may use a different record code.');
+      // Show first 5 non-RA records raw to identify the format
+      const others = all.filter(r => !r.DATAD.startsWith('RA')).slice(0, 5);
+      console.log('\nFirst 5 non-RA records (raw):\n');
+      others.forEach((r, i) => console.log(`${i + 1}. [${r.DATAD.substring(0, 100)}...]`));
+      await connection.close();
+      return;
+    }
+
+    // Print first 3 RW records raw so we can identify field positions
+    console.log('First 3 RW records (raw — 120 chars each):\n');
+    rwRecords.slice(0, 3).forEach((r, i) => {
+      console.log(`${i + 1}. [${r.DATAD.substring(0, 120)}]`);
+    });
+
+    // Try to parse using SSA EFW2 specification positions (1-indexed, converted to 0-indexed)
+    // RW record layout (SSA Publication 42-007):
+    //   1-2:   Record type "RW"
+    //   3-11:  Employee SSN (9 digits)
+    //   12-26: First name
+    //   27:    Middle initial
+    //   28-47: Last name (20 chars)
+    //   Wage amounts are right-justified, zero-padded, in CENTS, 11 chars each:
+    //   275-285: Box 1  - Wages, tips, other comp
+    //   286-296: Box 2  - Federal income tax withheld
+    //   297-307: Box 3  - Social Security wages
+    //   308-318: Box 4  - Social Security tax withheld
+    //   319-329: Box 5  - Medicare wages
+    //   330-340: Box 6  - Medicare tax withheld
+    //   389-399: Box 16 - State wages
+    //   400-410: Box 17 - State income tax withheld
+    // NOTE: these positions are approximations — the raw output above will help verify
+
+    console.log('\n\n🔬 Attempting to parse wage fields (SSA EFW2 positions):\n');
+    console.log('='.repeat(90));
+
+    const parseCents = (str) => {
+      const n = parseInt(str.trim(), 10);
+      return isNaN(n) ? null : n / 100;
+    };
+
+    const fmt = (n) => n == null ? '(empty)' :
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+
+    rwRecords.slice(0, 5).forEach((r, i) => {
+      const d = r.DATAD;
+      const ssn    = d.substring(2, 11).trim();
+      const first  = d.substring(11, 26).trim();
+      const middle = d.substring(26, 41).trim();   // 15-char middle name (EFW2 2016+)
+      const last   = d.substring(41, 61).trim();   // 20-char last name
+
+      // SSA EFW2 2021 wage field positions (0-indexed, 11 chars each, value in cents)
+      // Reference: SSA Pub 42-007, RW record positions 188-253 (1-indexed)
+      const box1  = parseCents(d.substring(187, 198));  // Wages, tips, other comp
+      const box2  = parseCents(d.substring(198, 209));  // Federal income tax withheld
+      const box3  = parseCents(d.substring(209, 220));  // Social Security wages
+      const box4  = parseCents(d.substring(220, 231));  // Social Security tax
+      const box5  = parseCents(d.substring(231, 242));  // Medicare wages
+      const box6  = parseCents(d.substring(242, 253));  // Medicare tax withheld
+      // Box 16/17 (state wages/tax) are in RS records, not RW — skipping for now
+
+      const last4ssn = ssn.slice(-4);
+      const mi = middle ? middle[0] + '.' : '';
+
+      console.log(`\nRecord ${i + 1}: ${first} ${mi} ${last}  (SSN last 4: ${last4ssn})`);
+      console.log(`  Box 1  Wages:               ${fmt(box1)}`);
+      console.log(`  Box 2  Fed tax withheld:     ${fmt(box2)}`);
+      console.log(`  Box 3  SS wages:             ${fmt(box3)}`);
+      console.log(`  Box 4  SS tax:               ${fmt(box4)}`);
+      console.log(`  Box 5  Medicare wages:       ${fmt(box5)}`);
+      console.log(`  Box 6  Medicare tax:         ${fmt(box6)}`);
+    });
+
+    console.log('\n='.repeat(90));
+    console.log('\n💡 If wage values look wrong (all $0 or garbage), the positions need adjusting.');
+    console.log('   Check the raw records above and count character positions manually.');
+
+    // Show distinct years from RE (employer) records
+    const reRecords = all.filter(r => r.DATAD.startsWith('RE'));
+    if (reRecords.length > 0) {
+      console.log('\n\n📅 Tax years found in RE (employer) records:');
+      reRecords.forEach(r => {
+        const yr = r.DATAD.substring(2, 6).trim();
+        console.log(`   ${yr}`);
+      });
+    }
+
+    await connection.close();
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+async function getW2ForEmployee(empNum, taxYear = null) {
+  try {
+    const yearLabel = taxYear ? `tax year ${taxYear}` : 'all years';
+    console.log(`📄 Looking up W-2 data for employee #${empNum} (${yearLabel})...\n`);
+
+    const connection = await odbc.connect(getConnectionString(config.libraryEmployee));
+
+    // Get employee's hidden ID
+    const empRow = await connection.query(
+      `SELECT EMEMP, EMFNM, EMLNM, EMQEM FROM ${config.libraryEmployee}.${config.tableEmployee} WHERE TRIM(EMEMP) = ? FETCH FIRST 1 ROW ONLY`,
+      [empNum.toString()]
+    );
+    await connection.close();
+
+    if (empRow.length === 0) {
+      console.log('❌ Employee not found');
+      return;
+    }
+
+    const emp = empRow[0];
+    console.log(`Employee: ${emp.EMFNM?.trim()} ${emp.EMLNM?.trim()}`);
+    console.log(`Hidden ID (EMQEM): ${emp.EMQEM}\n`);
+
+    // Try each known W-2 table location (confirmed from QSYS2 catalog)
+    const candidates = [
+      { lib: 'PAYF',   table: 'W2ADJZZ'    },
+      { lib: 'PAYF',   table: 'W2ADJA'     },
+      { lib: 'PAYF',   table: 'W2ADJB'     },
+      { lib: 'PAYF',   table: 'W2REPORT'   },
+      { lib: 'PAYF',   table: 'W2REPORT21' },
+      { lib: 'MHPAYF', table: 'W2ADJZZ'   },
+      { lib: 'ENPAYF', table: 'W2ADJZZ'   },
+    ];
+
+    let found = false;
+
+    for (const c of candidates) {
+      try {
+        const w2Conn = await odbc.connect(getConnectionString(c.lib));
+
+        // Figure out QEM field name for this table
+        const cols = await w2Conn.columns(null, c.lib, c.table, null);
+        const qemField = cols.map(col => col.COLUMN_NAME).find(n => n.includes('QEM'));
+
+        if (!qemField) {
+          await w2Conn.close();
+          continue;
+        }
+
+        const yearField = cols.map(col => col.COLUMN_NAME).find(n => n.includes('YR') || n.includes('YEAR'));
+
+        let query = `SELECT * FROM ${c.lib}.${c.table} WHERE ${qemField} = ?`;
+        const params = [emp.EMQEM];
+
+        if (taxYear && yearField) {
+          query += ` AND ${yearField} = ?`;
+          params.push(taxYear);
+        }
+
+        query += ` ORDER BY ${yearField || qemField} DESC FETCH FIRST 10 ROWS ONLY`;
+
+        const rows = await w2Conn.query(query, params);
+        await w2Conn.close();
+
+        if (rows.length > 0) {
+          found = true;
+          console.log(`✅ Found ${rows.length} W-2 record(s) in ${c.lib}.${c.table}\n`);
+          console.log('='.repeat(60));
+          rows.forEach((row, i) => {
+            console.log(`\nW-2 Record ${i + 1}:`);
+            Object.entries(row).forEach(([k, v]) => {
+              if (v !== null && v !== '' && v !== 0) {
+                console.log(`  ${k.padEnd(20)} = ${v}`);
+              }
+            });
+          });
+          console.log('='.repeat(60));
+          console.log(`\n📝 Table: ${c.lib}.${c.table}  |  Link field: ${qemField}  |  Year field: ${yearField || '(unknown)'}`);
+          break;
+        }
+      } catch {
+        // Table doesn't exist or no access — try next
+      }
+    }
+
+    if (!found) {
+      console.log('⚠️  No W-2 records found for this employee in any known table.');
+      console.log('   Run findW2Tables() first to discover where W-2 data lives on this system.');
+    }
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+// ===========================================
 // MAIN - Choose what to run
 // ===========================================
 
@@ -1883,7 +2498,24 @@ async function testWithoutAliases() {
 //testDirectEmqemLink();              // Test direct EMQEM → PNQEM link
 //findEmployeesWithPaystubs();        // Find employees who have paystubs
 
-getLoginForEmployee('360');        // Get login credentials for a specific employee
+getLoginForEmployee('360');         // Get login credentials for a specific employee
+
+// W-2 FUNCTIONS:
+//findW2Tables();                        // Discover W-2 tables — already confirmed accessible
+//exploreW2Table('PAYF', 'W2REPORT21');  // raw column dump
+//parseW2Report21();                     // parse EFW2 records — decode employee W-2 boxes
+//exploreW2Table('PAYF', 'W2ADJZZ');    // W2ADJZZ = adjustments only (38 records)
+//getW2ForEmployee('360');               // Get all W-2 records for employee #360
+//getW2ForEmployee('360', 2024);         // Get W-2 for employee #360 for a specific tax year
+//scanAllW2ReportTables();                // Find ALL W2REPORT* tables across ALL libraries
+//exploreW2Table('PAYF27', 'W2REPORT');   // De Baca County — different county
+//exploreW2Table('PAYF09', 'W2REPORT2');  // Colfax County (county code 09) — confirmed
+//exploreW2Table('PAYF21', 'W2REPORTDK'); // 432 records — unknown
+//scanPAYFW2Tables();                     // Find all W2 tables in PAYF library only (Luna County)
+//scanPAYF19W2Tables();                   // Find all W2 tables in PAYF19 (Luna County archive)
+//scanLibraryW2Tables('PAYF09');          // Scan Colfax County W2 tables
+//parseW2Table('PAYF09', 'W2REPORT2');    // Parse Colfax County 2019 W2s — verified ✅
+//scanLibraryW2Tables('PAYF05');            // Scan Curry County W2 tables
 
 //exploreHisctlzz();                  // Explore HISCTLZZ structure
 //findPaystubsInHisctlzz('2656');  // Find paystubs for employee #2656
@@ -1891,7 +2523,6 @@ getLoginForEmployee('360');        // Get login credentials for a specific emplo
 //getFullPaystubHistory();            // Get full paystub history for #2656
 
 //debugPaystubData();                // Debug paystub data for #2656
-
 //getLoginFor2656();                // Get login credentials for employee #2656
 
 //debugLogin2656();                // Debug login process for employee #2656

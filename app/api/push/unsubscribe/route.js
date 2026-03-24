@@ -1,10 +1,10 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import { removeSubscription } from '../../../../lib/push-db';
+import { removeSubscription, getSubscriptionsByEmployee } from '../../../../lib/push-db';
 
 export async function POST(request) {
   const session = await getServerSession(authOptions);
-  if (!session) {
+  if (!session?.user?.employeeNumber) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -21,6 +21,13 @@ export async function POST(request) {
   }
 
   try {
+    // Verify this endpoint belongs to the logged-in employee
+    const mySubscriptions = getSubscriptionsByEmployee(session.user.employeeNumber);
+    const owns = mySubscriptions.some(sub => sub.endpoint === endpoint);
+    if (!owns) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     removeSubscription(endpoint);
     return Response.json({ status: 'unsubscribed' });
   } catch (error) {

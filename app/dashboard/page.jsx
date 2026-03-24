@@ -232,12 +232,15 @@ export default function Dashboard() {
               <p className="text-sm text-gray-600">Personal details</p>
             </button>
 
-            <button className="p-6 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl hover:border-green-400 hover:shadow-lg transition-all group opacity-50 cursor-not-allowed">
-              <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center mb-4 shadow-md">
+            <button
+              onClick={() => router.push('/w2')}
+              className="p-6 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl hover:border-green-400 hover:shadow-lg transition-all group"
+            >
+              <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-md">
                 <FileText className="text-white" size={28} />
               </div>
               <p className="font-bold text-gray-900 text-lg mb-1">W-2 Forms</p>
-              <p className="text-sm text-gray-600">Coming soon</p>
+              <p className="text-sm text-gray-600">Tax statements</p>
             </button>
 
             <button

@@ -1,8 +1,21 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../auth/[...nextauth]/route';
 import { getEmployee, formatIBMDate, maskSSN } from '../../../../lib/db';
 
 export async function GET(request, { params }) {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.employeeNumber) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { id } = await params;
+
+  // Only allow employees to access their own record
+  if (id?.toString().trim() !== session.user.employeeNumber?.toString().trim()) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   // Validate employee ID
   if (!id || isNaN(id)) {

@@ -1,3 +1,4 @@
+const DEBUG = process.env.NODE_ENV === 'development';
 import { NextResponse } from 'next/server';
 import { getEmployeeForAuth } from '../../../../lib/db';
 import { isFirstLogin, isLockedOut, recordFailedAttempt } from '../../../../lib/security-db';
@@ -42,11 +43,17 @@ export async function POST(request) {
     if (firstLogin && dob) {
       // EMDOB is stored as YYYYMMDD number in database
       // User enters MM/DD/YYYY so we convert
-      const [month, day, year] = dob.split('/');
-      const enteredDOB = `${year}${month.padStart(2, '0')}${day.padStart(2, '0')}`;
+      if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dob.trim())) {
+        return NextResponse.json(
+          { error: 'Date of birth must be in MM/DD/YYYY format' },
+          { status: 400 }
+        );
+      }
+      const [month, day, year] = dob.trim().split('/');
+      const enteredDOB = `${year}${month}${day}`;
       const storedDOB = (employee.IDOB || employee.EMDOB)?.toString() || '';
 
-      console.log('DOB check - Entered:', enteredDOB, 'Stored:', storedDOB);
+      if (DEBUG) console.log('DOB check - Entered:', enteredDOB, 'Stored:', storedDOB);
 
       if (enteredDOB !== storedDOB) {
         recordFailedAttempt(empNum);

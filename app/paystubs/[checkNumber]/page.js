@@ -5,6 +5,8 @@ import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import { Printer, ArrowLeft, Download } from 'lucide-react';
 
+const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
+
 export default function PaystubDetailPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -119,7 +121,7 @@ export default function PaystubDetailPage() {
             <div className="flex justify-between items-start">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                  Luna County
+                  {countyName}
                 </h1>
                 <p className="text-gray-600">Employee Earnings Statement</p>
               </div>
@@ -233,7 +235,7 @@ export default function PaystubDetailPage() {
 
           {/* Footer */}
           <div className="border-t border-gray-300 pt-6 mt-8 text-center text-sm text-gray-500">
-            <p>This is an official pay stub from Luna County.</p>
+            <p>This is an official pay stub from {countyName}.</p>
             <p className="mt-2">
               Printed on {new Date().toLocaleDateString('en-US', { 
                 year: 'numeric', 

@@ -9,7 +9,7 @@ self.addEventListener('push', (event) => {
     console.error('SW: Failed to parse push payload', e);
   }
 
-  const title = data.title || 'Luna County HR Portal';
+  const title = data.title || 'HR Portal';
   const options = {
     body: data.body || 'You have a new notification.',
     icon: data.icon || '/icons/icon-192x192.png',

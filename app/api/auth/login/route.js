@@ -1,3 +1,4 @@
+const DEBUG = process.env.NODE_ENV === 'development';
 import { NextResponse } from 'next/server';
 import { authenticateEmployee, getEmployee } from '../../../../lib/db';
 
@@ -6,7 +7,7 @@ export async function POST(request) {
     const body = await request.json();
     const { employeeNumber, ssn } = body;
 
-    console.log('🔍 Login attempt:', { employeeNumber, ssn }); // DEBUG
+    if (DEBUG) console.log('🔍 Login attempt:', { employeeNumber, ssn });
 
     // Validate inputs
     if (!employeeNumber || !ssn) {
@@ -24,12 +25,12 @@ export async function POST(request) {
       );
     }
 
-    console.log('🔍 Calling authenticateEmployee...'); // DEBUG
+    if (DEBUG) console.log('🔍 Calling authenticateEmployee...');
 
     // Authenticate
     const isValid = await authenticateEmployee(parseInt(employeeNumber), ssn);
 
-    console.log('🔍 Authentication result:', isValid); // DEBUG
+    if (DEBUG) console.log('🔍 Authentication result:', isValid);
 
     if (!isValid) {
       return NextResponse.json(
@@ -41,7 +42,7 @@ export async function POST(request) {
     // Get full employee data
     const employee = await getEmployee(parseInt(employeeNumber));
 
-    console.log('🔍 Employee data:', employee); // DEBUG
+    if (DEBUG) console.log('🔍 Employee data:', employee);
 
     if (!employee) {
       return NextResponse.json(

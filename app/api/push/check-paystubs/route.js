@@ -1,3 +1,4 @@
+const DEBUG = process.env.NODE_ENV === 'development';
 import webpush from 'web-push';
 import { getLatestPayrollRunDate } from '../../../../lib/db';
 import {
@@ -54,7 +55,7 @@ export async function POST(request) {
 
   // New paystub run detected — send push to all subscribers
   const subscriptions = getAllSubscriptions();
-  console.log(`check-paystubs: new HCRUN ${latestHcrun} (was ${tracker.last_hcrun}), notifying ${subscriptions.length} subscribers`);
+  if (DEBUG) console.log(`check-paystubs: new HCRUN ${latestHcrun} (was ${tracker.last_hcrun}), notifying ${subscriptions.length} subscribers`);
 
   const payload = JSON.stringify({
     title: 'New Pay Stub Available',
@@ -75,7 +76,7 @@ export async function POST(request) {
       } catch (err) {
         // 410 Gone or 404 = browser revoked permission; clean up
         if (err.statusCode === 410 || err.statusCode === 404) {
-          console.log(`check-paystubs: removing stale subscription id=${sub.id}`);
+          if (DEBUG) console.log(`check-paystubs: removing stale subscription id=${sub.id}`);
           removeSubscriptionById(sub.id);
         } else {
           throw err;

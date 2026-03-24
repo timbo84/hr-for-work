@@ -1,3 +1,4 @@
+const DEBUG = process.env.NODE_ENV === 'development';
 import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { getEmployeeForAuth } from '../../../../lib/db';
@@ -24,23 +25,23 @@ export const authOptions = {
           const { employeeNumber, ssn, password } = credentials;
           const ipAddress = req?.headers?.['x-forwarded-for'] || 'unknown';
 
-          console.log('=== LOGIN ATTEMPT ===');
-          console.log('Employee:', employeeNumber);
-          console.log('SSN provided:', ssn ? 'YES' : 'NO');
+          if (DEBUG) console.log('=== LOGIN ATTEMPT ===');
+          if (DEBUG) console.log('Employee:', employeeNumber);
+          if (DEBUG) console.log('SSN provided:', ssn ? 'YES' : 'NO');
 
           if (!employeeNumber || !ssn) {
-            console.log('❌ Missing credentials');
+            if (DEBUG) console.log('❌ Missing credentials');
             throw new Error('Employee number and SSN are required');
           }
 
           const empNum = employeeNumber.trim();
 
           // ✅ Check lockout
-          console.log('Checking lockout...');
+          if (DEBUG) console.log('Checking lockout...');
           let lockout;
           try {
             lockout = isLockedOut(empNum);
-            console.log('Lockout status:', lockout);
+            if (DEBUG) console.log('Lockout status:', lockout);
           } catch (lockoutErr) {
             console.error('❌ Lockout check failed:', lockoutErr.message);
             lockout = false;
@@ -51,22 +52,22 @@ export const authOptions = {
           }
 
           // ✅ Check IBM i database
-          console.log('Checking IBM i database...');
+          if (DEBUG) console.log('Checking IBM i database...');
           let employee;
           try {
             employee = await getEmployeeForAuth(empNum, ssn);
-            console.log('Employee found:', employee ? 'YES' : 'NO');
+            if (DEBUG) console.log('Employee found:', employee ? 'YES' : 'NO');
           } catch (dbErr) {
             console.error('❌ IBM i database error:', dbErr.message);
             throw new Error('Database connection error. Please try again.');
           }
 
           if (!employee) {
-            console.log('❌ Employee not found or SSN mismatch');
+            if (DEBUG) console.log('❌ Employee not found or SSN mismatch');
 
             try {
               const result = recordFailedAttempt(empNum, ipAddress);
-              console.log('Failed attempt recorded:', result);
+              if (DEBUG) console.log('Failed attempt recorded:', result);
 
               if (result.locked) {
                 throw new Error('Account locked for 30 minutes due to too many failed attempts');
@@ -86,24 +87,24 @@ export const authOptions = {
           }
 
           // ✅ Employee found in IBM i
-          console.log('✅ Employee validated against IBM i');
+          if (DEBUG) console.log('✅ Employee validated against IBM i');
 
           // ✅ Security DB operations
           let firstLogin = true;
           try {
             createEmployeeSecurity(empNum);
             firstLogin = isFirstLogin(empNum);
-            console.log('First login:', firstLogin);
+            if (DEBUG) console.log('First login:', firstLogin);
           } catch (secErr) {
             console.error('❌ Security DB error (non-blocking):', secErr.message);
           }
 
           // ✅ If not first login, verify password
           if (!firstLogin && password) {
-            console.log('Verifying password...');
+            if (DEBUG) console.log('Verifying password...');
             try {
               const passwordValid = verifyPassword(empNum, password);
-              console.log('Password valid:', passwordValid);
+              if (DEBUG) console.log('Password valid:', passwordValid);
 
               if (!passwordValid) {
                 const result = recordFailedAttempt(empNum, ipAddress);
@@ -126,7 +127,7 @@ export const authOptions = {
           // ✅ Record successful login
           try {
             recordSuccessfulLogin(empNum, ipAddress);
-            console.log('✅ Successful login recorded');
+            if (DEBUG) console.log('✅ Successful login recorded');
           } catch (recordErr) {
             console.error('❌ Failed to record success (non-blocking):', recordErr.message);
           }
@@ -140,7 +141,7 @@ export const authOptions = {
             emqem: employee.EMQEM
           };
 
-          console.log('✅ Returning user:', returnUser);
+          if (DEBUG) console.log('✅ Returning user:', returnUser);
           return returnUser;
 
         } catch (error) {

@@ -3,9 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Mail, Phone, MapPin, Clock, Send, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, MapPin, Clock, Send } from 'lucide-react';
 
 const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
+const hrEmail    = process.env.NEXT_PUBLIC_HR_EMAIL   || `hr@${(process.env.NEXT_PUBLIC_COUNTY_NAME || 'county').toLowerCase().replace(/\s+/g, '')}.gov`;
+const hrPhone    = process.env.NEXT_PUBLIC_HR_PHONE   || '(555) 555-1234';
+const hrPhoneTel = process.env.NEXT_PUBLIC_HR_PHONE_TEL || hrPhone.replace(/\D/g, '');
+const hrAddress  = process.env.NEXT_PUBLIC_HR_ADDRESS  || '100 N. Main Avenue, Anytown, USA';
+const hrHours    = process.env.NEXT_PUBLIC_HR_HOURS    || 'Monday - Friday, 8:00 AM - 5:00 PM';
 
 export default function ContactPage() {
   const { data: session, status } = useSession();
@@ -14,8 +19,6 @@ export default function ContactPage() {
     message: '',
     urgency: 'normal'
   });
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -29,21 +32,13 @@ export default function ContactPage() {
     }
   }, [session, status, router]);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    setLoading(true);
 
-    // Simulate sending email (in production, this would call an API endpoint)
-    setTimeout(() => {
-      setLoading(false);
-      setSubmitted(true);
-      
-      // Reset form after 3 seconds
-      setTimeout(() => {
-        setSubmitted(false);
-        setFormData({ subject: '', message: '', urgency: 'normal' });
-      }, 3000);
-    }, 1500);
+    const subjectLine = `[${formData.urgency.toUpperCase()}] ${formData.subject} - Employee #${session?.user?.employeeNumber || ''}`;
+    const body = formData.message;
+
+    window.location.href = `mailto:${hrEmail}?subject=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(body)}`;
   };
 
   const handleChange = (e) => {
@@ -70,27 +65,6 @@ export default function ContactPage() {
     return null; // Will redirect via useEffect
   }
 
-  if (submitted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-12 max-w-md w-full text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle size={48} className="text-white" />
-          </div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-3">Message Sent!</h2>
-          <p className="text-gray-600 mb-6">
-            Your message has been sent to Human Resources. They will respond to you as soon as possible.
-          </p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-3 rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg font-medium"
-          >
-            Return to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -137,8 +111,8 @@ export default function ContactPage() {
                   <Mail size={18} className="text-purple-100 flex-shrink-0 mt-1" />
                   <div>
                     <p className="text-xs text-purple-100 font-medium mb-1">Email</p>
-                    <a href={`mailto:hr@${countyName.toLowerCase().replace(/\s+/g, '')}.gov`} className="text-white font-semibold hover:underline">
-                      hr@{countyName.toLowerCase().replace(/\s+/g, '')}.gov
+                    <a href={`mailto:${hrEmail}`} className="text-white font-semibold hover:underline">
+                      {hrEmail}
                     </a>
                   </div>
                 </div>
@@ -147,8 +121,8 @@ export default function ContactPage() {
                   <Phone size={18} className="text-purple-100 flex-shrink-0 mt-1" />
                   <div>
                     <p className="text-xs text-purple-100 font-medium mb-1">Phone</p>
-                    <a href="tel:+15555551234" className="text-white font-semibold hover:underline">
-                      (555) 555-1234
+                    <a href={`tel:+${hrPhoneTel}`} className="text-white font-semibold hover:underline">
+                      {hrPhone}
                     </a>
                   </div>
                 </div>
@@ -158,8 +132,7 @@ export default function ContactPage() {
                   <div>
                     <p className="text-xs text-purple-100 font-medium mb-1">Office Location</p>
                     <p className="text-white font-semibold">
-                      100 N. Main Avenue<br />
-                      Lovington, NM 88260
+                      {hrAddress}
                     </p>
                   </div>
                 </div>
@@ -169,8 +142,7 @@ export default function ContactPage() {
                   <div>
                     <p className="text-xs text-purple-100 font-medium mb-1">Office Hours</p>
                     <p className="text-white font-semibold">
-                      Monday - Friday<br />
-                      8:00 AM - 5:00 PM MST
+                      {hrHours}
                     </p>
                   </div>
                 </div>
@@ -295,20 +267,11 @@ export default function ContactPage() {
                   </p>
                   <button
                     type="submit"
-                    disabled={loading || !formData.subject || !formData.message}
+                    disabled={!formData.subject || !formData.message}
                     className="inline-flex items-center space-x-2 bg-gradient-to-r from-orange-600 to-red-600 text-white px-8 py-4 rounded-xl hover:from-orange-700 hover:to-red-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none font-bold"
                   >
-                    {loading ? (
-                      <>
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Sending...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send size={20} />
-                        <span>Send Message</span>
-                      </>
-                    )}
+                    <Send size={20} />
+                    <span>Open Email Client</span>
                   </button>
                 </div>
               </form>
@@ -325,11 +288,11 @@ export default function ContactPage() {
                     For urgent matters that require immediate attention, please call the HR office directly during business hours.
                   </p>
                   <a
-                    href="tel:+15555551234"
+                    href={`tel:+${hrPhoneTel}`}
                     className="inline-flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
                   >
                     <Phone size={16} />
-                    <span>Call (555) 555-1234</span>
+                    <span>Call {hrPhone}</span>
                   </a>
                 </div>
               </div>

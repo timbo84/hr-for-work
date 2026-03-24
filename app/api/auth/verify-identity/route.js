@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getEmployeeForAuth } from '../../../../lib/db';
+import { createResetToken } from '../../../../lib/security-db';
 
 export async function POST(request) {
   try {
@@ -25,8 +26,14 @@ export async function POST(request) {
     }
 
     // Verify date of birth
-    const [month, day, year] = dob.split('/');
-    const enteredDOB = `${year}${month.padStart(2, '0')}${day.padStart(2, '0')}`;
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dob.trim())) {
+      return NextResponse.json(
+        { error: 'Date of birth must be in MM/DD/YYYY format' },
+        { status: 400 }
+      );
+    }
+    const [month, day, year] = dob.trim().split('/');
+    const enteredDOB = `${year}${month}${day}`;
     const storedDOB = (employee.IDOB || employee.EMDOB)?.toString() || '';
 
     if (enteredDOB !== storedDOB) {
@@ -36,9 +43,12 @@ export async function POST(request) {
       );
     }
 
-    // Identity verified
+    // Identity verified — issue a one-time reset token (expires in 15 min)
+    const resetToken = createResetToken(empNum);
+
     return NextResponse.json({
       success: true,
+      resetToken,
       name: `${(employee.EMFNM || employee.IFNM || '').trim()} ${(employee.EMLNM || employee.ILNM || '').trim()}`.trim()
     });
 
