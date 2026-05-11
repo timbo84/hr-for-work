@@ -34,6 +34,7 @@ export async function GET(request, { params }) {
       payDate: formatIBMDate(stub.payDate),
       periodStart: formatIBMDate(stub.periodStart),
       periodEnd: formatIBMDate(stub.periodEnd),
+      runDate: stub.runDate,
       bank: stub.bank?.trim() || '',
       department: stub.department?.trim() || '',
       position: stub.position?.trim() || ''

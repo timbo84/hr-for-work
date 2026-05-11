@@ -6,12 +6,13 @@ const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
 export const metadata = {
   title: `${countyName} HR Portal`,
   description: 'Employee Self-Service Portal',
-  manifest: '/manifest.json',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'default',
-    title: `${countyName} HR Portal`,
-  },
+  // PWA manifest commented out — re-enable when PWA is needed
+  // manifest: '/manifest.json',
+  // appleWebApp: {
+  //   capable: true,
+  //   statusBarStyle: 'default',
+  //   title: `${countyName} HR Portal`,
+  // },
   icons: {
     icon: [
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
@@ -24,7 +25,7 @@ export const metadata = {
 };
 
 export const viewport = {
-  themeColor: '#1e40af',
+  // themeColor: '#1e40af',  // PWA theme color — re-enable when PWA is needed
   width: 'device-width',
   initialScale: 1,
   minimumScale: 1,

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, User, MapPin, Calendar, Briefcase, Shield, Mail } from 'lucide-react';
+import { ArrowLeft, User, MapPin, Calendar, Briefcase, Shield, Mail, DollarSign } from 'lucide-react';
+import { useIdleTimeout } from '../../lib/useIdleTimeout';
 
 const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
 const countyState = process.env.NEXT_PUBLIC_COUNTY_STATE || 'State';
@@ -13,6 +14,8 @@ export default function EmployeeInfoPage() {
   const [employeeDetails, setEmployeeDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  useIdleTimeout();
 
   useEffect(() => {
     // Wait for session to load
@@ -238,6 +241,56 @@ export default function EmployeeInfoPage() {
             </div>
           </div>
         </div>
+
+        {/* Tax Withholding */}
+        {employeeDetails.tax && (
+          <div className="mt-6 bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center">
+                  <DollarSign size={20} className="text-white" />
+                </div>
+                <h4 className="text-xl font-bold text-gray-900">Tax Withholding</h4>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Filing Status</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {employeeDetails.tax.filingStatus === '1' ? 'Single' :
+                     employeeDetails.tax.filingStatus === '2' ? 'Married' :
+                     employeeDetails.tax.filingStatus === '3' ? 'Married (higher rate)' :
+                     employeeDetails.tax.filingStatus || 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Federal W-4 on File</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {employeeDetails.tax.federalW4OnFile === 'Y' ? 'Yes' :
+                     employeeDetails.tax.federalW4OnFile === 'N' ? 'No' :
+                     employeeDetails.tax.federalW4OnFile || 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Federal Withholding</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {employeeDetails.tax.federalWithholding === 'Y' ? 'Active' :
+                     employeeDetails.tax.federalWithholding === 'N' ? 'Inactive' :
+                     employeeDetails.tax.federalWithholding || 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">State Withholding</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {employeeDetails.tax.stateWithholding === 'Y' ? 'Active' :
+                     employeeDetails.tax.stateWithholding === 'N' ? 'Inactive' :
+                     employeeDetails.tax.stateWithholding || 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              <p className="mt-4 text-xs text-gray-500">To update your withholding elections, submit a new W-4 to Human Resources.</p>
+            </div>
+          )}
 
         {/* Important Notice */}
         <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-6">

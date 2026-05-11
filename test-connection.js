@@ -2469,6 +2469,339 @@ async function getW2ForEmployee(empNum, taxYear = null) {
   }
 }
 
+async function findPayDetailTables(library) {
+  try {
+    console.log(`🔍 Scanning ${library} for pay detail / deduction tables...\n`);
+    const connection = await odbc.connect(getConnectionString(library));
+
+    // Search catalog for likely pay detail table names
+    const result = await connection.query(`
+      SELECT TABLE_NAME, TABLE_TEXT
+      FROM QSYS2.SYSTABLES
+      WHERE TABLE_SCHEMA = '${library}'
+      AND (
+        TABLE_NAME LIKE 'PAY%'
+        OR TABLE_NAME LIKE 'HIS%'
+        OR TABLE_NAME LIKE 'DED%'
+        OR TABLE_NAME LIKE 'ERN%'
+        OR TABLE_NAME LIKE 'CHK%'
+        OR TABLE_NAME LIKE 'NET%'
+        OR TABLE_NAME LIKE 'EARN%'
+        OR TABLE_NAME LIKE 'DEDN%'
+      )
+      ORDER BY TABLE_NAME
+    `);
+
+    console.log(`Found ${result.length} candidate table(s):\n`);
+    console.log('='.repeat(70));
+    result.forEach(t => {
+      console.log(`  ${t.TABLE_NAME.padEnd(25)} ${t.TABLE_TEXT || ''}`);
+    });
+    console.log('='.repeat(70));
+
+    // Get record counts for each
+    console.log('\n📋 Record counts:\n');
+    for (const t of result) {
+      try {
+        const cnt = await connection.query(
+          `SELECT COUNT(*) as CNT FROM ${library}.${t.TABLE_NAME}`
+        );
+        const total = cnt[0].CNT;
+        if (total > 0) {
+          console.log(`  ✅ ${t.TABLE_NAME.padEnd(25)} ${total.toString().padEnd(10)} records  — ${t.TABLE_TEXT || ''}`);
+        } else {
+          console.log(`  ⬜ ${t.TABLE_NAME.padEnd(25)} 0 records`);
+        }
+      } catch {
+        console.log(`  ❌ ${t.TABLE_NAME.padEnd(25)} no access`);
+      }
+    }
+
+    await connection.close();
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+// eslint-disable-next-line no-unused-vars
+async function explorePayDetailTables(library) {
+  const connection = await odbc.connect(getConnectionString(library));
+
+  for (const table of ['HISSALZZ', 'HISDEDZZ', 'PAYIMAGZ']) {
+    try {
+      console.log(`\n${'='.repeat(70)}`);
+      console.log(`📋 ${library}.${table}`);
+      console.log('='.repeat(70));
+
+      const cols = await connection.columns(null, library, table, null);
+      cols.forEach(c => {
+        console.log(`  ${c.COLUMN_NAME.padEnd(20)} ${c.TYPE_NAME.padEnd(12)} (${c.COLUMN_SIZE})`);
+      });
+
+      const sample = await connection.query(
+        `SELECT * FROM ${library}.${table} FETCH FIRST 2 ROWS ONLY`
+      );
+      if (sample.length > 0) {
+        console.log('\n  Sample row:');
+        Object.entries(sample[0]).forEach(([k, v]) => {
+          if (v !== null && v !== '' && v !== 0) {
+            console.log(`    ${k.padEnd(20)} = ${v}`);
+          }
+        });
+      }
+    } catch (e) {
+      console.log(`  ❌ ${table}: ${e.message}`);
+    }
+  }
+
+  await connection.close();
+}
+
+async function testPaystubDetail(library, employeeNumber) {
+  try {
+    console.log(`\n🔍 Testing pay stub detail for employee ${employeeNumber} in ${library}...\n`);
+    const connection = await odbc.connect(getConnectionString(library));
+
+    // Step 1: Get employee hidden ID (EMQEM)
+    const empResult = await connection.query(`
+      SELECT EMEMP, EMQEM, EMFNM, EMLNM
+      FROM ${library}.EMPMASZZ
+      WHERE TRIM(EMEMP) = ?
+      FETCH FIRST 1 ROW ONLY
+    `, [employeeNumber]);
+
+    if (empResult.length === 0) {
+      console.log('❌ Employee not found');
+      return;
+    }
+
+    const emp = empResult[0];
+    const emqem = emp.EMQEM;
+    console.log(`✅ Found: ${emp.EMFNM?.trim()} ${emp.EMLNM?.trim()}  (EMQEM: ${emqem})\n`);
+
+    // Step 2: Get most recent check from HISCTLZZ
+    const checks = await connection.query(`
+      SELECT HCQEM, HCCK#, HCRUN, HCDAY, HCCPY, HCCNT, HCCDD
+      FROM ${library}.HISCTLZZ
+      WHERE HCQEM = ?
+      ORDER BY HCRUN DESC
+      FETCH FIRST 3 ROWS ONLY
+    `, [emqem]);
+
+    if (checks.length === 0) {
+      console.log('❌ No checks found for this employee');
+      return;
+    }
+
+    const check = checks[0];
+    const hcqhc = check['HCCK#'];
+    console.log(`📄 Most recent check: #${hcqhc}  Run: ${check.HCRUN}  Pay Date: ${check.HCDAY}`);
+    console.log(`   Gross: $${check.HCCPY}  Net: $${check.HCCNT}  Deductions: $${check.HCCDD}\n`);
+
+    // Step 3: Get earnings lines from HISSALZZ
+    console.log('💰 Earnings lines (HISSALZZ):');
+    console.log('-'.repeat(50));
+    const earnings = await connection.query(`
+      SELECT HS.HSQSC, HS.HSSAL, HS.HSSHR, HS.HSHRT
+      FROM ${library}.HISSALZZ HS
+      WHERE HS.HSQHC = ?
+      ORDER BY HS.HSQSC
+    `, [hcqhc]);
+
+    if (earnings.length === 0) {
+      console.log('  No earnings lines found — trying HSQEM link...');
+      const alt = await connection.query(`
+        SELECT HS.HSQSC, HS.HSSAL, HS.HSSHR, HS.HSHRT, HS.HSRUN
+        FROM ${library}.HISSALZZ HS
+        WHERE HS.HSQEM = ? AND HS.HSRUN = ?
+        ORDER BY HS.HSQSC
+      `, [emqem, check.HCRUN]);
+      alt.forEach(e => console.log(`  Code: ${e.HSQSC}  Amount: $${e.HSSAL}  Hours: ${e.HSSHR}`));
+    } else {
+      earnings.forEach(e => console.log(`  Code: ${e.HSQSC}  Amount: $${e.HSSAL}  Hours: ${e.HSSHR}`));
+    }
+
+    // Step 4: Get deduction lines from HISDEDZZ
+    console.log('\n📋 Deduction lines (HISDEDZZ):');
+    console.log('-'.repeat(50));
+    const deds = await connection.query(`
+      SELECT HD.HDQDC, HD.HDDED, HD.HDMAT
+      FROM ${library}.HISDEDZZ HD
+      WHERE HD.HDQHC = ?
+      ORDER BY HD.HDQDC
+    `, [hcqhc]);
+
+    const dedLines = deds.length > 0 ? deds : await connection.query(`
+      SELECT HDQDC, HDDED, HDMAT
+      FROM ${library}.HISDEDZZ
+      WHERE HDQEM = ? AND HDRUN = ?
+      ORDER BY HDQDC
+    `, [emqem, check.HCRUN]);
+
+    // Look up deduction descriptions separately
+    for (const d of dedLines) {
+      let desc = '';
+      try {
+        const dc = await connection.query(
+          `SELECT DCTIT FROM ${library}.DEDCODZZ WHERE DCQDC = ? FETCH FIRST 1 ROW ONLY`,
+          [d.HDQDC]
+        );
+        desc = dc.length > 0 ? (dc[0].DCTIT || '').trim() : `Code ${d.HDQDC}`;
+      } catch { desc = `Code ${d.HDQDC}`; }
+      if (d.HDDED !== 0 || d.HDMAT !== 0) {
+        console.log(`  ${desc.padEnd(35)} Ded: $${d.HDDED}  Employer: $${d.HDMAT}`);
+      }
+    }
+
+    // Step 5: Get earnings description
+    console.log('\n💰 Earnings with description:');
+    console.log('-'.repeat(50));
+    const earningLines = earnings.length > 0 ? earnings : await connection.query(`
+      SELECT HSQSC, HSSAL, HSSHR, HSQES
+      FROM ${library}.HISSALZZ
+      WHERE HSQEM = ? AND HSRUN = ?
+      ORDER BY HSQSC
+    `, [emqem, check.HCRUN]);
+
+    for (const e of earningLines) {
+      let desc = '';
+      try {
+        const sc = await connection.query(
+          `SELECT SCTIT FROM ${library}.SALCODZZ WHERE SCQSC = ? FETCH FIRST 1 ROW ONLY`,
+          [e.HSQSC]
+        );
+        desc = sc.length > 0 ? (sc[0].SCTIT || '').trim() : `Code ${e.HSQSC}`;
+      } catch { desc = `Code ${e.HSQSC}`; }
+      console.log(`  ${desc.padEnd(35)} Amount: $${e.HSSAL}  Hours: ${e.HSSHR}`);
+    }
+
+    await connection.close();
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+async function exploreTaxTable(library, employeeNumber) {
+  try {
+    console.log(`\n🔍 Exploring tax withholding for employee ${employeeNumber} in ${library}...\n`);
+    const connection = await odbc.connect(getConnectionString(library));
+
+    // Get employee hidden ID first
+    const emp = await connection.query(
+      `SELECT EMQEM, EMFNM, EMLNM FROM ${library}.EMPMASZZ WHERE TRIM(EMEMP) = ? FETCH FIRST 1 ROW ONLY`,
+      [employeeNumber]
+    );
+    if (emp.length === 0) { console.log('❌ Employee not found'); return; }
+    const emqem = emp[0].EMQEM;
+    console.log(`✅ ${emp[0].EMFNM?.trim()} ${emp[0].EMLNM?.trim()}  (EMQEM: ${emqem})\n`);
+
+    // Show PAYTAXRES columns
+    console.log('📋 PAYTAXRES columns:');
+    const cols = await connection.columns(null, library, 'PAYTAXRES', null);
+    cols.forEach(c => console.log(`  ${c.COLUMN_NAME.padEnd(20)} ${c.TYPE_NAME} (${c.COLUMN_SIZE})`));
+
+    // Try to find this employee's tax record
+    console.log('\n📄 Sample records (first 3):');
+    const sample = await connection.query(
+      `SELECT * FROM ${library}.PAYTAXRES FETCH FIRST 3 ROWS ONLY`
+    );
+    sample.forEach((row, i) => {
+      console.log(`\nRow ${i + 1}:`);
+      Object.entries(row).forEach(([k, v]) => {
+        if (v !== null && v !== '' && v !== 0) console.log(`  ${k.padEnd(20)} = ${v}`);
+      });
+    });
+
+    // Try to find a link field to employee
+    const colNames = cols.map(c => c.COLUMN_NAME);
+    const empFields = colNames.filter(c => c.includes('QEM') || c.includes('EMP') || c.includes('SSN'));
+    console.log(`\n🔑 Employee-related fields: ${empFields.length ? empFields.join(', ') : '(none found)'}`);
+
+    if (empFields.length > 0) {
+      for (const field of empFields) {
+        const found = await connection.query(
+          `SELECT * FROM ${library}.PAYTAXRES WHERE ${field} = ? FETCH FIRST 1 ROW ONLY`,
+          [emqem]
+        );
+        if (found.length > 0) {
+          console.log(`\n✅ Found via ${field}:`);
+          Object.entries(found[0]).forEach(([k, v]) => {
+            if (v !== null && v !== '' && v !== 0) console.log(`  ${k.padEnd(20)} = ${v}`);
+          });
+          break;
+        }
+      }
+    }
+
+    await connection.close();
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
+async function findEmployeeTaxTable(library, employeeNumber) {
+  try {
+    console.log(`\n🔍 Searching for per-employee tax withholding table in ${library}...\n`);
+    const connection = await odbc.connect(getConnectionString(library));
+
+    // Get employee hidden ID
+    const emp = await connection.query(
+      `SELECT EMQEM FROM ${library}.EMPMASZZ WHERE TRIM(EMEMP) = ? FETCH FIRST 1 ROW ONLY`,
+      [employeeNumber]
+    );
+    if (emp.length === 0) { console.log('❌ Employee not found'); return; }
+    const emqem = emp[0].EMQEM;
+    console.log(`EMQEM: ${emqem}\n`);
+
+    // Find tables with TAX or FED or WITH in the name
+    const tables = await connection.query(`
+      SELECT TABLE_NAME, TABLE_TEXT
+      FROM QSYS2.SYSTABLES
+      WHERE TABLE_SCHEMA = '${library}'
+      AND (
+        TABLE_NAME LIKE '%TAX%'
+        OR TABLE_NAME LIKE '%WITH%'
+        OR TABLE_NAME LIKE '%FED%'
+        OR TABLE_NAME LIKE 'EMP%'
+        OR TABLE_NAME LIKE 'TAXRES%'
+      )
+      ORDER BY TABLE_NAME
+    `);
+
+    console.log(`Found ${tables.length} candidate tables:\n`);
+    console.log('='.repeat(70));
+    tables.forEach(t => console.log(`  ${t.TABLE_NAME.padEnd(25)} ${t.TABLE_TEXT || ''}`));
+    console.log('='.repeat(70));
+
+    // Check each for employee link and record count
+    console.log('\n📋 Checking for employee link...\n');
+    for (const t of tables) {
+      try {
+        const cols = await connection.columns(null, library, t.TABLE_NAME, null);
+        const colNames = cols.map(c => c.COLUMN_NAME);
+        const hasEmpLink = colNames.some(c => c.includes('QEM') || c.includes('EMP'));
+        if (!hasEmpLink) continue;
+
+        const empField = colNames.find(c => c.includes('QEM')) || colNames.find(c => c.includes('EMP'));
+        const found = await connection.query(
+          `SELECT * FROM ${library}.${t.TABLE_NAME} WHERE ${empField} = ? FETCH FIRST 1 ROW ONLY`,
+          [emqem]
+        );
+        if (found.length > 0) {
+          console.log(`\n✅ ${t.TABLE_NAME} — linked via ${empField}:`);
+          Object.entries(found[0]).forEach(([k, v]) => {
+            if (v !== null && v !== '' && v !== 0) console.log(`  ${k.padEnd(20)} = ${v}`);
+          });
+        }
+      } catch { /* skip inaccessible tables */ }
+    }
+
+    await connection.close();
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
 // ===========================================
 // MAIN - Choose what to run
 // ===========================================
@@ -2498,7 +2831,14 @@ async function getW2ForEmployee(empNum, taxYear = null) {
 //testDirectEmqemLink();              // Test direct EMQEM → PNQEM link
 //findEmployeesWithPaystubs();        // Find employees who have paystubs
 
-getLoginForEmployee('360');         // Get login credentials for a specific employee
+//getLoginForEmployee('4674');         // Get login credentials for a specific employee
+//scanLibraryW2Tables('PAYF05');        // Scan Curry County W2 tables — W2REPORT empty ❌
+//exploreW2Table('PAYF05', 'W2ADJA');  // W2ADJA = adjustments only, not full W-2 data ❌
+//findPayDetailTables('PAYF05');        // Done — found HISDEDZZ, HISSALZZ, PAYIMAGZ ✅
+//explorePayDetailTables('PAYF05');    // Done — confirmed HISSALZZ, HISDEDZZ structure ✅
+//testPaystubDetail('PAYF05', '4674'); // Done — earnings + deductions confirmed ✅
+//exploreTaxTable('PAYF05', '4674');   // PAYTAXRES = code lookup table only, no employee link ❌
+findEmployeeTaxTable('PAYF05', '4674'); // Find per-employee tax withholding table
 
 // W-2 FUNCTIONS:
 //findW2Tables();                        // Discover W-2 tables — already confirmed accessible

@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter, useParams } from 'next/navigation';
-import { Printer, ArrowLeft, Download } from 'lucide-react';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { Printer, ArrowLeft } from 'lucide-react';
 
 const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
+
+const fmt = (n) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n ?? 0);
 
 export default function PaystubDetailPage() {
   const { data: session, status } = useSession();
@@ -13,57 +16,64 @@ export default function PaystubDetailPage() {
   const params = useParams();
   const checkNumber = params.checkNumber;
 
+  const searchParams = useSearchParams();
+  const autoPrint = searchParams.get('print') === 'true';
+  const hasPrinted = useRef(false);
+
   const [paystub, setPaystub] = useState(null);
   const [employee, setEmployee] = useState(null);
+  const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/');
-    }
+    if (status === 'unauthenticated') router.push('/');
   }, [status, router]);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!session?.user?.employeeNumber) return;
-
       try {
-        // Fetch employee info
-        const empResponse = await fetch(`/api/employee/${session.user.employeeNumber}`);
-        const empData = await empResponse.json();
+        const [empRes, stubRes] = await Promise.all([
+          fetch(`/api/employee/${session.user.employeeNumber}`),
+          fetch(`/api/paystubs/${session.user.employeeNumber}`)
+        ]);
+        const empData = await empRes.json();
+        const stubData = await stubRes.json();
         setEmployee(empData);
 
-        // Fetch paystubs and find the one matching this check number
-        const stubResponse = await fetch(`/api/paystubs/${session.user.employeeNumber}`);
-        const stubData = await stubResponse.json();
-
-        const foundStub = stubData.payStubs?.find(
+        const found = stubData.payStubs?.find(
           s => s.checkNumber?.toString() === checkNumber
         );
+        setPaystub(found || null);
 
-        setPaystub(foundStub || null);
+        if (found?.runDate) {
+          const detailRes = await fetch(`/api/paystub-detail?run=${found.runDate}`);
+          const detailData = await detailRes.json();
+          setDetail(detailData);
+        }
       } catch (error) {
         console.error('Error fetching paystub:', error);
       } finally {
         setLoading(false);
       }
     };
-
-    if (session) {
-      fetchData();
-    }
+    if (session) fetchData();
   }, [session, checkNumber]);
 
-  const handlePrint = () => {
-    window.print();
-  };
+  // Auto-print when navigated from list with ?print=true
+  useEffect(() => {
+    if (!loading && paystub && autoPrint && !hasPrinted.current) {
+      hasPrinted.current = true;
+      window.print();
+    }
+  }, [loading, paystub, autoPrint]);
 
   if (loading || status === 'loading') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading paystub...</p>
+          <p className="text-gray-600">Loading pay stub...</p>
         </div>
       </div>
     );
@@ -73,8 +83,8 @@ export default function PaystubDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Paystub Not Found</h2>
-          <p className="text-gray-600 mb-6">Unable to find paystub #{checkNumber}</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Pay Stub Not Found</h2>
+          <p className="text-gray-600 mb-6">Unable to find pay stub #{checkNumber}</p>
           <button
             onClick={() => router.push('/paystubs')}
             className="inline-flex items-center space-x-2 bg-orange-600 text-white px-6 py-3 rounded-xl hover:bg-orange-700"
@@ -89,7 +99,7 @@ export default function PaystubDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      {/* Header with buttons - hidden on print */}
+      {/* Action bar — hidden on print */}
       <div className="container mx-auto px-4 mb-6 no-print">
         <div className="flex items-center justify-between">
           <button
@@ -99,150 +109,135 @@ export default function PaystubDetailPage() {
             <ArrowLeft size={20} />
             <span>Back to Pay Stubs</span>
           </button>
-
-          <div className="flex space-x-3">
-            <button
-              onClick={handlePrint}
-              className="inline-flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 shadow-md"
-            >
-              <Printer size={20} />
-              <span>Print</span>
-            </button>
-          </div>
+          <button
+            onClick={() => window.print()}
+            className="inline-flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 shadow-md"
+          >
+            <Printer size={20} />
+            <span>Print</span>
+          </button>
         </div>
       </div>
 
-      {/* Paystub - print-friendly */}
+      {/* Pay stub — print friendly */}
       <div className="container mx-auto px-4">
         <div className="print-paystub bg-white rounded-2xl shadow-lg p-8 max-w-4xl mx-auto">
-          
+
           {/* Header */}
-          <div className="border-b-2 border-gray-300 pb-6 mb-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                  {countyName}
-                </h1>
-                <p className="text-gray-600">Employee Earnings Statement</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-600">Check Number</p>
-                <p className="text-2xl font-bold text-gray-900">#{paystub.checkNumber}</p>
-              </div>
+          <div className="border-b-2 border-gray-300 pb-6 mb-6 flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-1">{countyName}</h1>
+              <p className="text-gray-600">Employee Earnings Statement</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-gray-500">Check Number</p>
+              <p className="text-2xl font-bold text-gray-900">#{paystub.checkNumber}</p>
             </div>
           </div>
 
-          {/* Employee Information */}
+          {/* Employee & Pay Period */}
           <div className="grid grid-cols-2 gap-8 mb-8">
             <div>
-              <h3 className="text-sm font-bold text-gray-500 uppercase mb-3">
-                Employee Information
-              </h3>
-              <div className="space-y-2">
-                <div>
-                  <span className="text-sm text-gray-600">Name:</span>
-                  <p className="font-semibold text-gray-900">
-                    {employee?.name?.first} {employee?.name?.middle} {employee?.name?.last}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-sm text-gray-600">Employee #:</span>
-                  <p className="font-semibold text-gray-900">{employee?.employeeNumber}</p>
-                </div>
-                {paystub.department && (
-                  <div>
-                    <span className="text-sm text-gray-600">Department:</span>
-                    <p className="font-semibold text-gray-900">{paystub.department}</p>
-                  </div>
-                )}
-                {paystub.position && (
-                  <div>
-                    <span className="text-sm text-gray-600">Position:</span>
-                    <p className="font-semibold text-gray-900">{paystub.position}</p>
-                  </div>
-                )}
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Employee Information</h3>
+              <div className="space-y-1.5 text-sm">
+                <p><span className="text-gray-500">Name:</span> <span className="font-semibold text-gray-900">{employee?.name?.first} {employee?.name?.middle} {employee?.name?.last}</span></p>
+                <p><span className="text-gray-500">Employee #:</span> <span className="font-semibold text-gray-900">{employee?.employeeNumber}</span></p>
+                {paystub.department && <p><span className="text-gray-500">Department:</span> <span className="font-semibold text-gray-900">{paystub.department}</span></p>}
+                {paystub.position && <p><span className="text-gray-500">Position:</span> <span className="font-semibold text-gray-900">{paystub.position}</span></p>}
               </div>
             </div>
-
             <div>
-              <h3 className="text-sm font-bold text-gray-500 uppercase mb-3">
-                Pay Period
-              </h3>
-              <div className="space-y-2">
-                <div>
-                  <span className="text-sm text-gray-600">Pay Date:</span>
-                  <p className="font-semibold text-gray-900">{paystub.payDate || 'N/A'}</p>
-                </div>
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Pay Period</h3>
+              <div className="space-y-1.5 text-sm">
+                <p><span className="text-gray-500">Pay Date:</span> <span className="font-semibold text-gray-900">{paystub.payDate || 'N/A'}</span></p>
                 {paystub.periodStart && paystub.periodEnd && (
-                  <div>
-                    <span className="text-sm text-gray-600">Period:</span>
-                    <p className="font-semibold text-gray-900">
-                      {paystub.periodStart} - {paystub.periodEnd}
-                    </p>
-                  </div>
+                  <p><span className="text-gray-500">Period:</span> <span className="font-semibold text-gray-900">{paystub.periodStart} – {paystub.periodEnd}</span></p>
                 )}
-                {paystub.bank && (
-                  <div>
-                    <span className="text-sm text-gray-600">Payment Method:</span>
-                    <p className="font-semibold text-gray-900">
-                      {paystub.bank === 'DD' ? 'Direct Deposit' : `Bank ${paystub.bank}`}
-                    </p>
-                  </div>
-                )}
+                <p><span className="text-gray-500">Payment Method:</span> <span className="font-semibold text-gray-900">{paystub.bank === 'DD' ? 'Direct Deposit' : `Bank ${paystub.bank || 'N/A'}`}</span></p>
               </div>
             </div>
           </div>
 
-          {/* Earnings Summary */}
-          <div className="border-t-2 border-gray-300 pt-6 mb-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Earnings Summary</h3>
-            
-            <table className="w-full">
+          {/* Earnings */}
+          <div className="mb-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-3">Earnings</h3>
+            <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-100">
-                  <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">
-                    Description
-                  </th>
-                  <th className="px-4 py-3 text-right text-sm font-bold text-gray-700">
-                    Amount
-                  </th>
+                  <th className="px-4 py-2 text-left font-bold text-gray-700">Description</th>
+                  <th className="px-4 py-2 text-right font-bold text-gray-700">Hours</th>
+                  <th className="px-4 py-2 text-right font-bold text-gray-700">Amount</th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b">
-                  <td className="px-4 py-3 text-gray-900">Gross Pay</td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                    {paystub.grossPay}
-                  </td>
-                </tr>
-                <tr className="border-b">
-                  <td className="px-4 py-3 text-gray-900">Deductions</td>
-                  <td className="px-4 py-3 text-right font-semibold text-red-600">
-                    -{paystub.deductions}
-                  </td>
-                </tr>
-                <tr className="bg-green-50 border-t-2 border-green-500">
-                  <td className="px-4 py-4 text-lg font-bold text-gray-900">
-                    Net Pay
-                  </td>
-                  <td className="px-4 py-4 text-right text-2xl font-bold text-green-600">
-                    {paystub.netPay}
-                  </td>
+                {detail?.earnings?.length > 0 ? (
+                  detail.earnings.map((e, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="px-4 py-2 text-gray-900">{e.description}</td>
+                      <td className="px-4 py-2 text-right text-gray-600">{e.hours > 0 ? e.hours : '—'}</td>
+                      <td className="px-4 py-2 text-right font-semibold text-gray-900">{fmt(e.amount)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="border-b">
+                    <td className="px-4 py-2 text-gray-900">Gross Pay</td>
+                    <td className="px-4 py-2 text-right text-gray-600">—</td>
+                    <td className="px-4 py-2 text-right font-semibold text-gray-900">{paystub.grossPay}</td>
+                  </tr>
+                )}
+                <tr className="bg-blue-50 border-t-2 border-blue-300">
+                  <td className="px-4 py-3 font-bold text-gray-900" colSpan={2}>Total Gross</td>
+                  <td className="px-4 py-3 text-right font-bold text-blue-700">{paystub.grossPay}</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
+          {/* Deductions */}
+          <div className="mb-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-3">Deductions</h3>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="px-4 py-2 text-left font-bold text-gray-700">Description</th>
+                  <th className="px-4 py-2 text-right font-bold text-gray-700">Employee</th>
+                  <th className="px-4 py-2 text-right font-bold text-gray-700">Employer</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail?.deductions?.length > 0 ? (
+                  detail.deductions.map((d, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="px-4 py-2 text-gray-900">{d.description}</td>
+                      <td className="px-4 py-2 text-right text-red-600">{d.employeeAmount > 0 ? fmt(d.employeeAmount) : '—'}</td>
+                      <td className="px-4 py-2 text-right text-gray-500">{d.employerAmount > 0 ? fmt(d.employerAmount) : '—'}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="border-b">
+                    <td className="px-4 py-2 text-gray-900">Total Deductions</td>
+                    <td className="px-4 py-2 text-right text-red-600">{paystub.deductions}</td>
+                    <td className="px-4 py-2 text-right text-gray-500">—</td>
+                  </tr>
+                )}
+                <tr className="bg-red-50 border-t-2 border-red-300">
+                  <td className="px-4 py-3 font-bold text-gray-900" colSpan={2}>Total Deductions</td>
+                  <td className="px-4 py-3 text-right font-bold text-red-600">{paystub.deductions}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Net Pay */}
+          <div className="bg-green-50 border-2 border-green-500 rounded-xl p-6 flex justify-between items-center mb-8">
+            <p className="text-xl font-bold text-gray-900">Net Pay</p>
+            <p className="text-3xl font-bold text-green-600">{paystub.netPay}</p>
+          </div>
+
           {/* Footer */}
-          <div className="border-t border-gray-300 pt-6 mt-8 text-center text-sm text-gray-500">
+          <div className="border-t border-gray-300 pt-6 text-center text-sm text-gray-500">
             <p>This is an official pay stub from {countyName}.</p>
-            <p className="mt-2">
-              Printed on {new Date().toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}
-            </p>
+            <p className="mt-1">Printed on {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
           </div>
 
         </div>

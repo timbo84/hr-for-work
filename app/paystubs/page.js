@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Download, Calendar, DollarSign, FileText, Search, Filter, Printer } from 'lucide-react';
+import { useIdleTimeout } from '../../lib/useIdleTimeout';
 
 const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
 const hrEmail = process.env.NEXT_PUBLIC_HR_EMAIL || `hr@${(process.env.NEXT_PUBLIC_COUNTY_NAME || 'county').toLowerCase().replace(/\s+/g, '')}.gov`;
 
 export default function PayStubsPage() {
   const { data: session, status } = useSession();
+  useIdleTimeout();
   const [payStubs, setPayStubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -253,14 +255,23 @@ export default function PayStubsPage() {
                       </div>
                     </div>
 
-                    {/* Right Side - Action */}
-                    <button
-                      onClick={() => router.push(`/paystubs/${stub.checkNumber}`)}
-                      className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg transform hover:scale-105 font-medium"
-                    >
-                      <Printer size={18} />
-                      <span>View & Print</span>
-                    </button>
+                    {/* Right Side - Actions */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => router.push(`/paystubs/${stub.checkNumber}`)}
+                        className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-3 rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md font-medium"
+                      >
+                        <FileText size={18} />
+                        <span>View</span>
+                      </button>
+                      <button
+                        onClick={() => router.push(`/paystubs/${stub.checkNumber}?print=true`)}
+                        title="Print this stub"
+                        className="inline-flex items-center justify-center w-11 h-11 bg-gray-100 text-gray-600 rounded-xl hover:bg-orange-100 hover:text-orange-600 transition-colors border border-gray-200"
+                      >
+                        <Printer size={18} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

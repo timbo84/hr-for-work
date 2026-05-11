@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, FileText, DollarSign, Calendar, Info, Download } from 'lucide-react';
+import { useIdleTimeout } from '../../lib/useIdleTimeout';
 
 const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
 
@@ -12,6 +13,7 @@ const fmt = (n) =>
 
 export default function W2Page() {
   const { data: session, status } = useSession();
+  useIdleTimeout();
   const [w2s, setW2s] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 
 const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || "County";
@@ -21,6 +21,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [employeeName, setEmployeeName] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const idleLogout = searchParams.get('reason') === 'idle';
 
   // Step 1: Verify employee number + SSN
   const handleVerifyIdentity = async (e) => {
@@ -126,7 +128,9 @@ export default function LoginPage() {
       if (result?.error) {
         setError(result.error);
       } else if (result?.ok) {
-        router.push("/dashboard");
+        // Hard navigation ensures the dashboard mounts fully fresh every login,
+        // which is required for hooks like useIdleTimeout to re-initialize.
+        window.location.href = "/dashboard";
       }
     } catch (err) {
       setError("Server error. Please try again.");
@@ -166,6 +170,13 @@ export default function LoginPage() {
         </div>
 
         <div className="p-10">
+          {/* Idle timeout notice */}
+          {idleLogout && (
+            <div className="mb-6 bg-amber-50 border border-amber-300 text-amber-800 rounded-xl px-4 py-3 text-sm text-center font-medium">
+              You were signed out due to inactivity. Please sign in again.
+            </div>
+          )}
+
           {/* STEP 1 - Employee Number + SSN */}
           {step === 1 && (
             <>

@@ -3,14 +3,18 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
-import { FileText, User, Mail, LogOut, Calendar, Briefcase, Bell, BellOff, Shield } from 'lucide-react';
+import { FileText, User, Mail, LogOut, Calendar, Briefcase, Shield, MapPin } from 'lucide-react';
+// PWA push icons commented out — re-enable when PWA is needed
+// import { Bell, BellOff } from 'lucide-react';
+import { useIdleTimeout } from '../../lib/useIdleTimeout';
 
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
-}
+// PWA push helper commented out — re-enable when PWA is needed
+// function urlBase64ToUint8Array(base64String) {
+//   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+//   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+//   const rawData = atob(base64);
+//   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+// }
 
 const countyName = process.env.NEXT_PUBLIC_COUNTY_NAME || 'County';
 
@@ -20,11 +24,15 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Push notification state
-  const [pushSupported, setPushSupported] = useState(false);
-  const [pushPermission, setPushPermission] = useState('default');
-  const [pushSubscribed, setPushSubscribed] = useState(false);
-  const [pushLoading, setPushLoading] = useState(false);
+  const { secondsLeft } = useIdleTimeout();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // PWA push state commented out — re-enable when PWA is needed
+  // const [pushSupported, setPushSupported] = useState(false);
+  // const [pushPermission, setPushPermission] = useState('default');
+  // const [pushSubscribed, setPushSubscribed] = useState(false);
+  // const [pushLoading, setPushLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -50,75 +58,78 @@ export default function Dashboard() {
     // Check admin access
     fetch('/api/admin/check').then(r => r.json()).then(d => setIsAdmin(d.isAdmin));
 
-    // Check push notification support & current subscription
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
-      setPushSupported(true);
-      setPushPermission(Notification.permission);
-
-      navigator.serviceWorker.ready.then(async (reg) => {
-        const existing = await reg.pushManager.getSubscription();
-        setPushSubscribed(!!existing);
-      });
-    }
+    // PWA push check commented out — re-enable when PWA is needed
+    // if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
+    //   setPushSupported(true);
+    //   setPushPermission(Notification.permission);
+    //   navigator.serviceWorker.ready.then(async (reg) => {
+    //     const existing = await reg.pushManager.getSubscription();
+    //     setPushSubscribed(!!existing);
+    //   });
+    // }
   }, [session, status, router]);
 
-  const handleEnablePush = async () => {
-    setPushLoading(true);
-    try {
-      const permission = await Notification.requestPermission();
-      setPushPermission(permission);
-      if (permission !== 'granted') return;
+  // PWA push handlers commented out — re-enable when PWA is needed
+  // const handleEnablePush = async () => {
+  //   setPushLoading(true);
+  //   try {
+  //     const permission = await Notification.requestPermission();
+  //     setPushPermission(permission);
+  //     if (permission !== 'granted') return;
+  //     const reg = await navigator.serviceWorker.ready;
+  //     const subscription = await reg.pushManager.subscribe({
+  //       userVisibleOnly: true,
+  //       applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY),
+  //     });
+  //     const res = await fetch('/api/push/subscribe', {
+  //       method: 'POST',
+  //       headers: { 'Content-Type': 'application/json' },
+  //       body: JSON.stringify(subscription.toJSON()),
+  //     });
+  //     if (res.ok) setPushSubscribed(true);
+  //   } catch (err) {
+  //     console.error('Push subscribe error:', err);
+  //   } finally {
+  //     setPushLoading(false);
+  //   }
+  // };
 
-      const reg = await navigator.serviceWorker.ready;
-      const subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(
-          process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-        ),
-      });
-
-      const res = await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subscription.toJSON()),
-      });
-
-      if (res.ok) setPushSubscribed(true);
-    } catch (err) {
-      console.error('Push subscribe error:', err);
-    } finally {
-      setPushLoading(false);
-    }
-  };
-
-  const handleDisablePush = async () => {
-    setPushLoading(true);
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const subscription = await reg.pushManager.getSubscription();
-      if (subscription) {
-        await fetch('/api/push/unsubscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: subscription.endpoint }),
-        });
-        await subscription.unsubscribe();
-        setPushSubscribed(false);
-      }
-    } catch (err) {
-      console.error('Push unsubscribe error:', err);
-    } finally {
-      setPushLoading(false);
-    }
-  };
+  // const handleDisablePush = async () => {
+  //   setPushLoading(true);
+  //   try {
+  //     const reg = await navigator.serviceWorker.ready;
+  //     const subscription = await reg.pushManager.getSubscription();
+  //     if (subscription) {
+  //       await fetch('/api/push/unsubscribe', {
+  //         method: 'POST',
+  //         headers: { 'Content-Type': 'application/json' },
+  //         body: JSON.stringify({ endpoint: subscription.endpoint }),
+  //       });
+  //       await subscription.unsubscribe();
+  //       setPushSubscribed(false);
+  //     }
+  //   } catch (err) {
+  //     console.error('Push unsubscribe error:', err);
+  //   } finally {
+  //     setPushLoading(false);
+  //   }
+  // };
 
   const handleLogout = () => {
     signOut({ callbackUrl: '/' });
   };
 
+  // DEBUG badge — only renders client-side (after hydration) to avoid SSR mismatch
+  const debugBadge = mounted && (
+    <div className="fixed bottom-4 right-4 z-50 bg-black bg-opacity-75 text-white text-xs font-mono px-3 py-2 rounded-lg shadow-lg">
+      ⏱ Idle logout in: {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}
+    </div>
+  );
+
   if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+        {debugBadge}
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600 font-medium">Loading your information...</p>
@@ -133,6 +144,9 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* DEBUG: Idle timeout countdown — remove before production */}
+      {debugBadge}
+
       {/* Header */}
       <header className="bg-white border-b-2 border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -170,23 +184,31 @@ export default function Dashboard() {
       {/* Dashboard Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+          <h2 className="text-3xl font-bold text-gray-900 mb-1">
             Welcome back, {employeeDetails.name.first}!
           </h2>
-          <p className="text-gray-600">Here is your employee dashboard</p>
+          <div className="flex flex-wrap items-center gap-3 mt-2">
+            <span className="inline-flex items-center space-x-1.5 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold">
+              <Briefcase size={14} />
+              <span>{employeeDetails.position}</span>
+            </span>
+            {employeeDetails.office && (
+              <span className="inline-flex items-center space-x-1.5 bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-sm font-semibold">
+                <MapPin size={14} />
+                <span>{employeeDetails.office}</span>
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Info Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-xl p-6 text-white transform hover:scale-105 transition-transform">
             <div className="flex items-center justify-between mb-3">
-              <Calendar size={32} className="text-white opacity-80" />
-              <span className="text-xs bg-white bg-opacity-30 px-3 py-1 rounded-full font-semibold text-gray-500">
-                {new Date().getFullYear()}
-              </span>
+              <MapPin size={32} className="text-white opacity-80" />
             </div>
-            <p className="text-emerald-100 text-sm font-medium mb-1">Department</p>
-            <p className="text-2xl font-bold">{employeeDetails.department}</p>
+            <p className="text-emerald-100 text-sm font-medium mb-1">Office</p>
+            <p className="text-2xl font-bold">{employeeDetails.office || 'Not Available'}</p>
           </div>
 
           <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-xl p-6 text-white transform hover:scale-105 transition-transform">
@@ -199,7 +221,7 @@ export default function Dashboard() {
 
           <div className="bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl shadow-xl p-6 text-white transform hover:scale-105 transition-transform">
             <div className="flex items-center justify-between mb-3">
-              <User size={32} className="text-white opacity-80" />
+              <Calendar size={32} className="text-white opacity-80" />
             </div>
             <p className="text-purple-100 text-sm font-medium mb-1">Hire Date</p>
             <p className="text-2xl font-bold">{employeeDetails.hireDate}</p>
@@ -292,50 +314,12 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Push Notification Opt-in */}
-        {pushSupported && (
+        {/* PWA Push Notification Opt-in commented out — re-enable when PWA is needed */}
+        {/* {pushSupported && (
           <div className="mt-6 bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
-                  <Bell className="text-white" size={24} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Pay Stub Notifications</h3>
-                  {pushPermission === 'denied' ? (
-                    <p className="text-sm text-red-600">Notifications are blocked in your browser settings.</p>
-                  ) : pushSubscribed ? (
-                    <p className="text-sm text-gray-600">You will be notified when a new pay stub is available.</p>
-                  ) : (
-                    <p className="text-sm text-gray-600">Get notified automatically when a new pay stub is ready.</p>
-                  )}
-                </div>
-              </div>
-
-              {pushPermission !== 'denied' && (
-                pushSubscribed ? (
-                  <button
-                    onClick={handleDisablePush}
-                    disabled={pushLoading}
-                    className="flex items-center space-x-2 px-4 py-2 border-2 border-red-400 text-red-600 rounded-xl hover:bg-red-50 transition-colors font-semibold disabled:opacity-50"
-                  >
-                    <BellOff size={16} />
-                    <span>{pushLoading ? 'Turning off…' : 'Turn Off'}</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleEnablePush}
-                    disabled={pushLoading}
-                    className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-violet-500 to-indigo-600 text-white rounded-xl hover:opacity-90 transition-opacity font-semibold shadow-md disabled:opacity-50"
-                  >
-                    <Bell size={16} />
-                    <span>{pushLoading ? 'Enabling…' : 'Enable'}</span>
-                  </button>
-                )
-              )}
-            </div>
+            ...push notification card...
           </div>
-        )}
+        )} */}
 
         {/* Notice */}
         <div className="mt-6 bg-gradient-to-r from-orange-100 to-yellow-100 border-2 border-orange-300 rounded-2xl p-6">

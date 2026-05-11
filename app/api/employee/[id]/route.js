@@ -47,6 +47,7 @@ export async function GET(request, { params }) {
       },
       department: 'Not Available', // INSWORKA doesn't have department field
       position: employee.IPOS?.trim() || 'Not Available',
+      office: employee.EMOFF?.trim() || null,
       hireDate: formatIBMDate(employee.IDOH),
       dateOfBirth: formatIBMDate(employee.IDOB),
       ssn: maskSSN(employee['ISS#']?.toString()),
@@ -60,6 +61,13 @@ export async function GET(request, { params }) {
         type: 'Full Time', // Default since we don't have this field
         status: 'Active', // Default since we don't have this field
         permanent: 'Permanent' // Default since we don't have this field
+      },
+      tax: {
+        filingStatus: employee.EMSTA?.toString().trim() || null,
+        federalW4OnFile: employee.EMFW4?.toString().trim() || null,
+        federalWithholding: employee.EMFDW?.toString().trim() || null,
+        stateWithholding: employee.EMSTW?.toString().trim() || null,
+        federalCredit: employee.EMCRFD || null
       }
     };
 
